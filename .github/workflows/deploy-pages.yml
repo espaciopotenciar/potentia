@@ -1,0 +1,71 @@
+name: Deploy Potentia to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Permisos mínimos necesarios para publicar en GitHub Pages con OIDC.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Evita despliegues superpuestos: si se dispara un nuevo build mientras uno
+# está corriendo, no cancela el deploy en curso, solo encola los builds.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependencias
+        # Se usa "npm install" en vez de "npm ci" porque el repositorio todavía no
+        # tiene un package-lock.json committeado (se generó sin acceso a Node.js).
+        # Una vez que alguien corra "npm install" en local y suba el lockfile
+        # resultante, este paso puede cambiarse a "npm ci" para builds más
+        # reproducibles y agregar de nuevo `cache: "npm"` arriba.
+        run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Pruebas (lógica de decisión de Accionar)
+        run: npm test
+
+      - name: Build de producción (exportación estática)
+        run: npm run build
+        env:
+          GITHUB_PAGES: "true"
+
+      - name: Asegurar archivo .nojekyll en la salida
+        run: touch ./out/.nojekyll
+
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Subir artefacto de Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

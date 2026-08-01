@@ -7,7 +7,40 @@ claridad, siguiendo la metodología de seguimiento **Sistema 4x4**.
 
 Flujo central: **APRENDER → INTERPRETAR → ACCIONAR**.
 
-## 1. Instalación y ejecución local
+Repositorio: [github.com/espaciopotenciar/potentia](https://github.com/espaciopotenciar/potentia)
+Publicado en: **https://espaciopotenciar.github.io/potentia/**
+
+## 1. Publicar en GitHub Pages (sin instalar Node.js)
+
+La app está configurada para compilarse y publicarse sola con GitHub Actions cada vez
+que se sube un cambio a `main`. No hace falta instalar nada ni abrir una terminal.
+
+**Pasos:**
+
+1. Subí o modificá archivos directamente en GitHub (editor web o subiendo archivos).
+2. Andá a **Settings → Pages** del repositorio.
+3. En **Source**, elegí **GitHub Actions** (solo hay que hacerlo una vez).
+4. Andá a la pestaña **Actions** y verificá que el workflow **"Deploy Potentia to
+   GitHub Pages"** se haya disparado y esté corriendo (o ya terminado).
+5. Esperá a que termine (ícono verde ✅). Tarda un par de minutos.
+6. Abrí la URL publicada: **https://espaciopotenciar.github.io/potentia/**
+
+**Para volver a publicar manualmente** (sin subir ningún cambio nuevo):
+
+1. Andá a la pestaña **Actions** del repositorio.
+2. En el panel izquierdo, hacé clic en **"Deploy Potentia to GitHub Pages"**.
+3. Hacé clic en el botón **"Run workflow"** (arriba a la derecha de la lista de runs),
+   elegí la rama `main` y confirmá.
+4. Esperá a que el run termine en verde y volvé a abrir la URL publicada.
+
+Si el workflow termina en rojo ❌, entrá al run y mirá el paso que falló (lint, tests o
+build): el log indica exactamente el archivo y la línea del problema, sin necesitar tu
+computadora.
+
+## 2. Instalación y ejecución local (opcional)
+
+Este paso **no es necesario** para publicar en GitHub Pages — solo sirve si en algún
+momento querés desarrollar o previsualizar la app en tu propia máquina.
 
 Requisitos: [Node.js](https://nodejs.org) 18 o superior y npm.
 
@@ -21,25 +54,24 @@ Abrí [http://localhost:3000](http://localhost:3000).
 Otros comandos disponibles:
 
 ```bash
-npm run build   # build de producción
-npm run start   # sirve el build de producción
+npm run build   # build de producción (genera la carpeta out/, exportación estática)
 npm run lint    # linting con Next.js/ESLint
 npm run test    # corre los tests de la lógica de decisión (vitest)
 ```
 
-> Este proyecto se generó sin poder ejecutar `npm install` ni `npm run build` en el
-> entorno donde se creó (no había Node.js instalado). El código está completo y
-> tipado, pero te recomendamos correr `npm run build` y `npm run test` apenas lo
-> instales localmente para confirmar que compila limpio en tu máquina.
+> `npm run start` no aplica en este proyecto: al estar configurado con exportación
+> estática (`output: "export"`), no hay un servidor Node.js en producción — el sitio
+> son archivos HTML/CSS/JS puros servidos por GitHub Pages.
 
-## 2. Arquitectura del proyecto
+## 3. Arquitectura del proyecto
 
-Next.js (App Router) + TypeScript + Tailwind CSS. Sin backend, sin base de datos, sin
-login. Todo el contenido vive en archivos TypeScript locales y el progreso educativo se
-guarda en `localStorage` del navegador.
+Next.js (App Router) + TypeScript + Tailwind CSS, exportado como sitio 100% estático.
+Sin backend, sin base de datos, sin login. Todo el contenido vive en archivos
+TypeScript locales y el progreso educativo se guarda en `localStorage` del navegador.
 
 ```
 potentia/
+├─ .github/workflows/deploy-pages.yml  # ⭐ Publicación automática en GitHub Pages
 ├─ src/
 │  ├─ app/                     # Rutas (App Router)
 │  │  ├─ page.tsx              # Inicio (/)
@@ -60,15 +92,15 @@ potentia/
 │  │  ├─ action/                # QuestionStep, OptionCard, ActionWizard, ActionResult...
 │  │  ├─ objections/            # ObjectionCard, ObjectionResult
 │  │  └─ search/                # SearchBar, SearchResults
-│  ├─ data/                     # ⭐ Contenido editable (ver sección 3)
+│  ├─ data/                     # ⭐ Contenido editable (ver sección 5)
 │  │  ├─ modules.ts
 │  │  ├─ lessons.ts
 │  │  ├─ actionMatrix.ts
 │  │  ├─ objections.ts
 │  │  └─ concepts.ts
 │  ├─ lib/
-│  │  ├─ dataProvider.ts       # ⭐ Capa de acceso a datos (ver sección 4)
-│  │  ├─ decisionEngine.ts     # ⭐ Lógica de decisión de Accionar (ver sección 5)
+│  │  ├─ dataProvider.ts       # ⭐ Capa de acceso a datos (ver sección 6)
+│  │  ├─ decisionEngine.ts     # ⭐ Lógica de decisión de Accionar (ver sección 7)
 │  │  ├─ decisionEngine.test.ts
 │  │  ├─ template.ts           # Reemplazo de variables {{var}} en plantillas
 │  │  ├─ textUtils.ts          # Normalización de texto para el buscador
@@ -77,12 +109,58 @@ potentia/
 │  │  ├─ useLocalStorage.ts
 │  │  └─ useProgress.ts
 │  └─ types/                    # Tipos TypeScript (Lesson, ActionMatrixEntry, Objection...)
+├─ public/.nojekyll             # Evita que GitHub Pages procese /_next con Jekyll
+├─ next.config.js               # ⭐ Exportación estática + basePath para GitHub Pages
 ├─ package.json
 ├─ tailwind.config.ts
 └─ tsconfig.json
 ```
 
-## 3. Dónde editar los contenidos
+## 4. Configuración de publicación estática (GitHub Pages)
+
+[`next.config.js`](next.config.js) configura la app para exportarse como sitio
+totalmente estático:
+
+- `output: "export"` — genera una carpeta `out/` con HTML/CSS/JS puro en el build,
+  sin necesitar un servidor Node.js corriendo en producción.
+- `trailingSlash: true` — cada ruta resuelve a una carpeta con `index.html` (por
+  ejemplo `/aprender/` → `aprender/index.html`), tal como espera un hosting de
+  archivos estáticos como GitHub Pages.
+- `images: { unoptimized: true }` — desactiva el optimizador de imágenes de Next.js
+  (requiere un servidor), sin afectar la app porque no usa `next/image`.
+- `basePath` / `assetPrefix` — el repositorio se llama **`potentia`** y pertenece a la
+  cuenta **`espaciopotenciar`**, así que el sitio se publica en una subcarpeta:
+  `https://espaciopotenciar.github.io/potentia/`. El workflow de GitHub Actions define
+  la variable de entorno `GITHUB_PAGES=true` al construir, y `next.config.js` usa esa
+  variable para agregar `basePath: "/potentia"` **solo** en ese build. En local
+  (`npm run dev` / `npm run build` sin esa variable) la app sigue sirviéndose en la
+  raíz, sin necesitar configuración adicional en tu máquina.
+
+Como toda la navegación interna usa el componente `<Link>` de Next.js (no hay ningún
+`<a href="...">` manual ni `window.location`), Next.js agrega automáticamente el
+`basePath` a todos los enlaces, rutas y archivos estáticos generados — no hizo falta
+tocar ninguna URL a mano en los componentes.
+
+### Compatibilidad revisada para exportación estática
+
+Se revisó todo el proyecto y **no** existía nada incompatible con `output: "export"`,
+por lo que no hubo que eliminar ni reemplazar funcionalidad:
+
+- Sin API routes (`app/api/**/route.ts`).
+- Sin Server Actions (`"use server"`).
+- Sin Middleware.
+- Sin `rewrites`/`redirects`/`headers` dependientes de servidor en `next.config.js`.
+- Sin `getServerSideProps` (no aplica en App Router).
+- Sin `next/image` (los íconos son SVG inline en `src/components/icons.tsx`, sin
+  optimización de servidor).
+- Las dos rutas dinámicas (`/aprender/[slug]` y `/objeciones/[slug]`) ya usaban
+  `generateStaticParams`, que es justamente lo que necesita `output: "export"` para
+  generar cada página en build time.
+- `localStorage` sigue funcionando igual: solo se usa en el navegador, después de que
+  la página ya cargó, y siempre detrás de un chequeo de `typeof window` (ver
+  `src/lib/storage.ts`), por lo que no depende de ningún servidor.
+
+## 5. Dónde editar los contenidos
 
 Todo el contenido de demostración está centralizado en `src/data/`. No hace falta tocar
 componentes visuales para editar textos.
@@ -93,13 +171,17 @@ componentes visuales para editar textos.
   `keywords`, `relatedLessonIds` y `active`. Para ocultar una lección sin borrarla, poné
   `active: false`.
 - **Matriz de acciones (Accionar)** → [`src/data/actionMatrix.ts`](src/data/actionMatrix.ts).
-  Ver sección 5 más abajo para entender cómo se arma cada registro.
+  Ver sección 7 más abajo para entender cómo se arma cada registro.
 - **Objeciones** → [`src/data/objections.ts`](src/data/objections.ts). Cada objeción tiene
   las tres respuestas (empática, neutra, directa), preguntas para profundizar, qué evitar,
   etc.
 - **Conceptos destacados del buscador** → [`src/data/concepts.ts`](src/data/concepts.ts).
 
-## 4. Capa de acceso a datos (`dataProvider`)
+Cualquiera de estos archivos se puede editar directamente desde GitHub (botón del
+lápiz ✏️ en la vista del archivo). Al hacer commit sobre `main`, el workflow de
+publicación se dispara solo.
+
+## 6. Capa de acceso a datos (`dataProvider`)
 
 Ningún componente importa los archivos de `src/data/*.ts` directamente. Todos pasan por
 [`src/lib/dataProvider.ts`](src/lib/dataProvider.ts), que expone una interfaz
@@ -134,9 +216,11 @@ tocar ningún componente visual ni la lógica de decisión.
    `src/app/`, porque todos consumen la interfaz `DataProvider`, no los archivos locales.
 
 Este MVP **no** implementa credenciales ni conexión real a Google Sheets, ni expone
-ninguna clave.
+ninguna clave. Nota: si en el futuro se conecta una fuente de datos remota, dejaría de
+ser compatible con la exportación 100% estática actual y habría que revisar esta
+configuración de GitHub Pages.
 
-## 5. Lógica de decisión de Accionar
+## 7. Lógica de decisión de Accionar
 
 Vive en [`src/lib/decisionEngine.ts`](src/lib/decisionEngine.ts), como una función pura
 y testeable: `resolveAction(answers, matrix)`.
@@ -161,9 +245,10 @@ recomendación.
 
 Tests: [`src/lib/decisionEngine.test.ts`](src/lib/decisionEngine.test.ts) cubre sin
 conversación previa, fecha acordada, 0/1/2/3/4+ mensajes sin respuesta y situación sin
-coincidencia exacta. Correr con `npm run test`.
+coincidencia exacta. Corre automáticamente en cada publicación (ver el workflow) y
+también con `npm run test` en local.
 
-## 6. Progreso educativo (localStorage)
+## 8. Progreso educativo (localStorage)
 
 `src/hooks/useProgress.ts` guarda en `localStorage` (vía `src/lib/storage.ts`):
 
@@ -172,9 +257,11 @@ coincidencia exacta. Correr con `npm run test`.
 
 No se usa la IP ni ningún identificador de dispositivo. El progreso vive solo en ese
 navegador y ese dispositivo, y se pierde si la persona borra los datos de navegación —
-esto se comunica en pantalla con el componente `LocalStorageNotice`.
+esto se comunica en pantalla con el componente `LocalStorageNotice`. Esto sigue
+funcionando igual publicado en GitHub Pages, ya que `localStorage` es una API del
+navegador, no del servidor.
 
-## 7. Elementos preparados para conectar Google Sheets
+## 9. Elementos preparados para conectar Google Sheets
 
 - Interfaz `DataProvider` en `src/lib/dataProvider.ts`, desacoplada de la fuente de
   datos.
@@ -183,7 +270,7 @@ esto se comunica en pantalla con el componente `LocalStorageNotice`.
 - Ningún componente de `src/components/` ni `src/app/` importa `src/data/*.ts`
   directamente: todos usan `getDataProvider()`.
 
-## 8. Limitaciones reales del MVP
+## 10. Limitaciones reales del MVP
 
 - No hay backend, base de datos ni autenticación: todo el contenido es estático y el
   progreso vive solo en el navegador actual.
@@ -193,20 +280,34 @@ esto se comunica en pantalla con el componente `LocalStorageNotice`.
   recomendación general segura en vez de inventar una respuesta.
 - La búsqueda es por coincidencia parcial de texto (sin tildes, sin mayúsculas); no usa
   IA ni búsqueda semántica.
-- Este entorno de generación no tenía Node.js instalado, por lo que no se pudo correr
-  `npm install`, `npm run build` ni `npm run test` para verificar la compilación de
-  forma automática antes de la entrega. Se recomienda correr ambos comandos apenas se
-  clone el proyecto.
+- Al ser exportación 100% estática, si en el futuro se agrega cualquier funcionalidad
+  que necesite un servidor (formularios que escriban datos, autenticación real,
+  contenido que cambie sin volver a publicar), habría que quitar `output: "export"` de
+  `next.config.js` y usar otro hosting (Vercel, Netlify, etc.) en vez de GitHub Pages.
+- El proyecto se generó originalmente en un entorno sin Node.js instalado, por lo que el
+  build no se pudo ejecutar de forma local en ese momento; el workflow de GitHub Actions
+  (`.github/workflows/deploy-pages.yml`) corre `npm install`, `lint`, `test` y `build` en
+  cada publicación, así que cualquier error de compilación queda visible ahí sin
+  necesitar tu computadora.
+- Por el mismo motivo, todavía no hay un `package-lock.json` committeado (se genera
+  recién la primera vez que alguien corre `npm install`, local o en el workflow). El
+  workflow usa `npm install` en vez de `npm ci` para no depender de ese archivo. Si en
+  algún momento corrés `npm install` en tu máquina y subís el `package-lock.json`
+  generado, se puede volver a usar `npm ci` (más rápido y reproducible) — el workflow
+  ya tiene un comentario indicando ese cambio.
 
-## 9. Preparar el proyecto para subirlo a GitHub
+## 11. El repositorio en GitHub
+
+El proyecto ya está subido en
+[github.com/espaciopotenciar/potentia](https://github.com/espaciopotenciar/potentia),
+rama `main`. Para clonarlo en otra máquina (opcional, solo si en algún momento querés
+desarrollar en local):
 
 ```bash
-git init
-git add .
-git commit -m "Potentia MVP"
-git branch -M main
-git remote add origin <url-de-tu-repositorio>
-git push -u origin main
+git clone https://github.com/espaciopotenciar/potentia.git
+cd potentia
+npm install
+npm run dev
 ```
 
-El `.gitignore` ya excluye `node_modules`, `.next` y archivos de entorno.
+El `.gitignore` ya excluye `node_modules`, `.next`, `out` y archivos de entorno.
