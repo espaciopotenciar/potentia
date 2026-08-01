@@ -55,7 +55,7 @@ export default function HomePage() {
         <div className="relative rounded-3xl bg-potentia-deep p-8 text-potentia-cream shadow-soft md:p-10">
           <p className="text-sm uppercase tracking-wide text-potentia-lime">Filosofía Potentia</p>
           <p className="mt-4 text-xl font-medium leading-relaxed md:text-2xl">
-            "Acompañar decisiones. Cerrar con criterio. Nutrir sin perseguir."
+            &ldquo;Acompañar decisiones. Cerrar con criterio. Nutrir sin perseguir.&rdquo;
           </p>
           <div className="mt-8 h-px bg-white/10" />
           <p className="mt-6 text-sm leading-relaxed text-potentia-cream/80">
@@ -92,7 +92,7 @@ export default function HomePage() {
       <section className="pb-16 pt-4">
         <div className="rounded-3xl border border-potentia-lavender bg-potentia-lavender/20 p-8 text-center md:p-12">
           <p className="text-lg font-medium leading-relaxed text-potentia-ink md:text-2xl">
-            "Acompañar decisiones. Cerrar con criterio. Nutrir sin perseguir."
+            &ldquo;Acompañar decisiones. Cerrar con criterio. Nutrir sin perseguir.&rdquo;
           </p>
         </div>
       </section>

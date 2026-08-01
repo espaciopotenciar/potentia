@@ -50,7 +50,7 @@ export function MessageStyleSelector({
               {meta.description}
             </span>
             <span className={`mt-3 line-clamp-2 text-xs italic ${isSelected ? "text-white/70" : "text-potentia-muted/80"}`}>
-              "{variants[key].example}"
+              {`"${variants[key].example}"`}
             </span>
           </button>
         );
