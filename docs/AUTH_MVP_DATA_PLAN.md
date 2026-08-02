@@ -22,8 +22,7 @@ Decisiones aprobadas incorporadas a este diseño:
 - **v2:** alta inicial en `suspended` (no `trial`), campos nullable en
   `subscriptions`, `update_own_full_name` en vez de política de `UPDATE`
   genérica, seed completo generado y verificado con Node real.
-- **v3 (esta versión):** dos correcciones de seguridad finales antes de
-  ejecutar:
+- **v3:** dos correcciones de seguridad antes de ejecutar:
   1. `is_admin(uuid)`, `has_active_membership(uuid)`, `has_content_access(uuid)`
      reemplazadas por versiones **sin parámetro** (`is_current_user_admin()`,
      `current_user_has_active_membership()`, `current_user_has_content_access()`),
@@ -34,6 +33,15 @@ Decisiones aprobadas incorporadas a este diseño:
      administrativa puede escribir ahí.
   3. Cada función tiene ahora `REVOKE`/`GRANT` explícito, incluyendo un
      `revoke ... from anon` explícito además de `revoke ... from public`.
+- **v4 (esta versión):** corrección de un error real señalado en la
+  revisión: el documento afirmaba que `service_role` no podía hacer
+  `UPDATE`/`DELETE` en `admin_audit_log` "porque no existen políticas
+  RLS". Eso es incorrecto — `service_role` tiene el atributo `BYPASSRLS`
+  y no le aplica ninguna política, exista o no. La inmutabilidad ahora se
+  implementa con un **trigger** (`prevent_audit_log_mutation`), que
+  rechaza cualquier `UPDATE`/`DELETE` para cualquier rol, `service_role`
+  incluido — los triggers no se saltean por `BYPASSRLS`. Detalle completo
+  en la sección 7.
 
 ---
 
@@ -91,6 +99,7 @@ Todas en `0004_functions_triggers.sql`.
 | `update_own_full_name(text)` | Único camino de escritura de un usuario común sobre su propia fila de `profiles`; solo toca `full_name` | Sí |
 | `prevent_self_role_change()` | Bloquea que alguien cambie su propio `role` | No |
 | `prevent_self_subscription_change()` | Bloquea que alguien modifique su propia membresía | No |
+| `prevent_audit_log_mutation()` (v4) | Rechaza cualquier `UPDATE`/`DELETE` sobre `admin_audit_log`, para cualquier rol incluido `service_role` | No |
 
 **Cambio v3:** `is_admin`, `has_active_membership` y `has_content_access`
 ya no existen con parámetro `uuid` — se reemplazaron por las tres
@@ -207,6 +216,13 @@ revoke all on function public.handle_new_user() from public;
 revoke all on function public.set_updated_at() from public;
 revoke all on function public.prevent_self_role_change() from public;
 revoke all on function public.prevent_self_subscription_change() from public;
+
+-- prevent_audit_log_mutation() (v4) — explícito para los tres roles de
+-- aplicación, no solo "from public", porque este REVOKE es el punto
+-- central de la corrección de esta versión:
+revoke all on function public.prevent_audit_log_mutation() from public;
+revoke all on function public.prevent_audit_log_mutation() from anon;
+revoke all on function public.prevent_audit_log_mutation() from authenticated;
 ```
 
 `revoke ... from public` ya bloquea a `anon` (`PUBLIC` es un pseudo-rol
@@ -224,6 +240,7 @@ inequívoco en el propio SQL.
 | `update_own_full_name(text)` | ❌ | ✅ | ✅ |
 | `handle_new_user()` | ❌ | ❌ | ✅ (solo vía trigger) |
 | `set_updated_at()` / `prevent_self_role_change()` / `prevent_self_subscription_change()` | ❌ | ❌ | ✅ (solo vía trigger) |
+| `prevent_audit_log_mutation()` (v4) | ❌ | ❌ | ✅ (solo vía trigger — ni siquiera `service_role` la llama directo, el trigger la dispara sola) |
 
 `authenticated` necesita `GRANT EXECUTE` sobre las tres funciones de
 sesión porque Postgres exige permiso de `EXECUTE` a quien ejecuta la
@@ -257,9 +274,66 @@ escritura para `authenticated`, ni siquiera admin.
 
 | Acción | `anon` | `authenticated` (no admin) | `authenticated` (admin) | `service_role` |
 |---|---|---|---|---|
-| `SELECT` | ❌ | ❌ | ✅ | ✅ |
-| `INSERT` | ❌ | ❌ | ❌ | ✅ |
-| `UPDATE` / `DELETE` | ❌ | ❌ | ❌ | ❌ (nadie — append-only) |
+| `SELECT` | ❌ (sin política) | ❌ (sin política) | ✅ (política RLS) | ✅ (bypassea RLS) |
+| `INSERT` | ❌ (sin política) | ❌ (sin política) | ❌ (sin política) | ✅ (bypassea RLS — este es el camino real de escritura) |
+| `UPDATE` / `DELETE` | ❌ | ❌ | ❌ | **❌ — bloqueado por el trigger `prevent_audit_log_mutation`, no por RLS** |
+
+**Corrección v4:** la fila de `UPDATE`/`DELETE` para `service_role` en la
+versión anterior de esta tabla decía "❌ (nadie — append-only)" atribuido
+implícitamente a la ausencia de políticas RLS. Eso era incorrecto:
+`service_role` tiene el atributo `BYPASSRLS`, así que la ausencia de una
+política de `UPDATE`/`DELETE` no lo detiene — RLS simplemente no se evalúa
+para ese rol. El motivo real, correcto, es el trigger de la sección
+siguiente, que no depende de RLS en absoluto.
+
+### Inmutabilidad real frente a `service_role`: trigger `prevent_audit_log_mutation`
+
+```sql
+-- Función de trigger: rechaza incondicionalmente cualquier UPDATE/DELETE,
+-- para cualquier rol, incluido service_role. Los triggers no forman parte
+-- de RLS y no se saltean con BYPASSRLS — se disparan para toda sentencia
+-- UPDATE/DELETE contra la tabla, sin importar quién la ejecute.
+create or replace function public.prevent_audit_log_mutation()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception 'admin_audit_log es de solo inserción: no se permite UPDATE ni DELETE, ni siquiera con service_role.';
+end;
+$$;
+
+-- Ningún rol de aplicación puede invocarla directamente como RPC: no
+-- tiene ninguna razón de ser fuera de este trigger. El trigger la
+-- ejecuta igual, sin depender de estos GRANT.
+revoke all on function public.prevent_audit_log_mutation() from public;
+revoke all on function public.prevent_audit_log_mutation() from anon;
+revoke all on function public.prevent_audit_log_mutation() from authenticated;
+
+drop trigger if exists admin_audit_log_prevent_mutation on public.admin_audit_log;
+create trigger admin_audit_log_prevent_mutation
+  before update or delete on public.admin_audit_log
+  for each row execute function public.prevent_audit_log_mutation();
+```
+
+Vive en `0004_functions_triggers.sql` (junto al resto de las funciones y
+triggers), no en un archivo nuevo — el proyecto sigue teniendo los mismos
+5 archivos de migración numerados (0001–0005) más `rollback.sql`.
+
+Por qué no se usó `WITH CHECK`/RLS para esto: una política RLS de
+`UPDATE`/`DELETE` con `USING (false)` tendría el mismo problema que
+cualquier otra política — `service_role` la ignora por completo. Un
+trigger `BEFORE UPDATE OR DELETE` es la única herramienta de Postgres que
+sigue aplicando incluso cuando RLS no aplica. `DROP TABLE` (usado en
+`rollback.sql`) no pasa por este trigger porque es DDL, no DML — el
+rollback del entorno de prueba sigue funcionando sin problema.
+
+**Confirmación pedida:** las futuras funciones administrativas (Etapa 5,
+patrón de la sección siguiente) van a poder seguir haciendo `INSERT` en
+`admin_audit_log` sin ningún cambio — el trigger nuevo solo intercepta
+`UPDATE` y `DELETE`. Van a poder agregar registros nuevos, pero nunca
+modificar ni borrar uno ya existente, ni siquiera ellas mismas (son
+`SECURITY DEFINER`, pero corren como el mismo rol de base que
+`service_role`/`postgres`, y el trigger no hace excepciones por rol).
 
 ### El patrón para las futuras operaciones administrativas (Etapa 5 — referencia, no se crea todavía)
 
@@ -400,7 +474,7 @@ Este paso no se automatiza ni se deja en un script versionado a propósito.
 
 ## 11. Confirmaciones finales pedidas
 
-- **`anon` no puede ejecutar ninguna RPC interna:** confirmado — las ocho
+- **`anon` no puede ejecutar ninguna RPC interna:** confirmado — las nueve
   funciones de `0004_functions_triggers.sql` tienen `revoke ... from
   public` y ninguna tiene `grant ... to anon`. Las cuatro con algún
   `GRANT` lo tienen exclusivamente hacia `authenticated`.
@@ -408,6 +482,11 @@ Este paso no se automatiza ni se deja en un script versionado a propósito.
   `0005_rls_policies.sql` no define ninguna política de
   `INSERT`/`UPDATE`/`DELETE` para `authenticated` sobre `admin_audit_log`.
   RLS activado sin política = denegado por defecto.
+- **`admin_audit_log` es append-only también frente a `service_role`
+  (corrección v4):** confirmado — el trigger `prevent_audit_log_mutation`
+  rechaza cualquier `UPDATE`/`DELETE` sobre esa tabla para cualquier rol,
+  sin depender de RLS. Solo `INSERT` sigue permitido, para `service_role`
+  hoy y para las futuras funciones administrativas de la Etapa 5.
 - **La publishable key no puede modificar roles ni membresías:**
   confirmado — ninguna tabla tiene política de `UPDATE` para
   `authenticated` que alcance `role` (`profiles`) ni ningún campo de

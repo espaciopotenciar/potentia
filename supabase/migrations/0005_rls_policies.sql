@@ -141,12 +141,22 @@ create policy "learning_progress_delete_own"
 -- ---------------------------------------------------------------------
 -- Solo lectura para admins. SIN ninguna política de INSERT, UPDATE ni
 -- DELETE para 'authenticated' — ni siquiera para admins. La única forma
--- de escribir en esta tabla es service_role (o, más adelante, una función
--- SECURITY DEFINER administrativa que la propia Etapa 5 va a crear, y que
--- va a insertar el registro de auditoría como parte de la misma
--- transacción que hace el cambio — ver la nota de diseño en
--- docs/AUTH_MVP_DATA_PLAN.md). Registro append-only: nunca se actualiza
--- ni se borra una fila existente, ni siquiera por un admin.
+-- de insertar en esta tabla es service_role (o, más adelante, una función
+-- SECURITY DEFINER administrativa que la propia Etapa 5 va a crear).
+--
+-- Que esta tabla sea append-only NO depende de estas políticas RLS: RLS
+-- no aplica a service_role (tiene el atributo BYPASSRLS), así que aunque
+-- acá no exista ninguna política de UPDATE/DELETE, una conexión con la
+-- clave de service role técnicamente podría modificar o borrar filas si
+-- eso fuera lo único que las protegiera. La inmutabilidad real está
+-- implementada con un TRIGGER (prevent_audit_log_mutation, en
+-- 0004_functions_triggers.sql), que rechaza cualquier UPDATE/DELETE para
+-- cualquier rol — los triggers no se saltean por BYPASSRLS.
+drop policy if exists "admin_audit_log_select_admin_only" on public.admin_audit_log;
+create policy "admin_audit_log_select_admin_only"
+  on public.admin_audit_log for select
+  to authenticated
+  using (public.is_current_user_admin());
 drop policy if exists "admin_audit_log_select_admin_only" on public.admin_audit_log;
 create policy "admin_audit_log_select_admin_only"
   on public.admin_audit_log for select

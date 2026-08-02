@@ -11,6 +11,7 @@
 -- =====================================================================
 
 -- Triggers primero (dependen de las funciones y de las tablas)
+drop trigger if exists admin_audit_log_prevent_mutation on public.admin_audit_log;
 drop trigger if exists subscriptions_prevent_self_change on public.subscriptions;
 drop trigger if exists profiles_prevent_self_role_change on public.profiles;
 drop trigger if exists on_auth_user_created on auth.users;
@@ -22,6 +23,7 @@ drop trigger if exists subscriptions_set_updated_at on public.subscriptions;
 drop trigger if exists profiles_set_updated_at on public.profiles;
 
 -- Funciones
+drop function if exists public.prevent_audit_log_mutation();
 drop function if exists public.prevent_self_subscription_change();
 drop function if exists public.prevent_self_role_change();
 drop function if exists public.update_own_full_name(text);

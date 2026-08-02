@@ -322,3 +322,46 @@ drop trigger if exists subscriptions_prevent_self_change on public.subscriptions
 create trigger subscriptions_prevent_self_change
   before update on public.subscriptions
   for each row execute function public.prevent_self_subscription_change();
+
+-- ---------------------------------------------------------------------
+-- prevent_audit_log_mutation(): admin_audit_log tiene que ser append-only
+-- de verdad, no solo "sin política RLS de UPDATE/DELETE". RLS y
+-- service_role son ortogonales: service_role tiene el atributo BYPASSRLS,
+-- así que ninguna política de este archivo lo detiene — una conexión con
+-- la clave de service role SÍ podría hacer UPDATE o DELETE directo sobre
+-- esta tabla si lo único que la protegiera fuera RLS.
+--
+-- Los triggers, en cambio, no son parte de RLS y no se saltean por
+-- BYPASSRLS: se disparan para CUALQUIER rol que ejecute la sentencia,
+-- incluido service_role (y hasta el superusuario postgres, salvo que
+-- alguien deshabilite el trigger explícitamente con ALTER TABLE, algo
+-- que requiere ser dueño de la tabla, no solo tener BYPASSRLS). Por eso
+-- la inmutabilidad real de esta tabla se implementa acá, con un trigger
+-- que rechaza incondicionalmente cualquier UPDATE o DELETE, para
+-- cualquier rol.
+--
+-- INSERT no se toca: service_role y las futuras funciones administrativas
+-- SECURITY DEFINER (Etapa 5) siguen pudiendo agregar registros nuevos —
+-- lo único que queda bloqueado es tocar un registro ya existente.
+-- ---------------------------------------------------------------------
+create or replace function public.prevent_audit_log_mutation()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception 'admin_audit_log es de solo inserción: no se permite UPDATE ni DELETE, ni siquiera con service_role.';
+end;
+$$;
+
+-- Ningún rol de aplicación puede invocarla directamente como RPC —ni
+-- siquiera authenticated, que sí tiene GRANT en otras funciones de este
+-- archivo—: no tiene ninguna razón de ser fuera de este trigger. El
+-- trigger la ejecuta igual, sin depender de estos GRANT.
+revoke all on function public.prevent_audit_log_mutation() from public;
+revoke all on function public.prevent_audit_log_mutation() from anon;
+revoke all on function public.prevent_audit_log_mutation() from authenticated;
+
+drop trigger if exists admin_audit_log_prevent_mutation on public.admin_audit_log;
+create trigger admin_audit_log_prevent_mutation
+  before update or delete on public.admin_audit_log
+  for each row execute function public.prevent_audit_log_mutation();
