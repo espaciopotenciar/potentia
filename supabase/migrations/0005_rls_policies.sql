@@ -157,10 +157,5 @@ create policy "admin_audit_log_select_admin_only"
   on public.admin_audit_log for select
   to authenticated
   using (public.is_current_user_admin());
-drop policy if exists "admin_audit_log_select_admin_only" on public.admin_audit_log;
-create policy "admin_audit_log_select_admin_only"
-  on public.admin_audit_log for select
-  to authenticated
-  using (public.is_current_user_admin());
 
 -- (Deliberadamente no hay policy de INSERT/UPDATE/DELETE acá. Ver nota arriba.)
