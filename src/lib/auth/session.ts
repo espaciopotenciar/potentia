@@ -36,7 +36,7 @@ export interface AuthContext {
  * debe tratarlo como "sin acceso".
  */
 export async function getAuthContext(): Promise<AuthContext> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },

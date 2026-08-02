@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   const next = resolveConfirmRedirect(rawType, searchParams.get("next"));
 
   if (tokenHash && type) {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
 
     if (!error) {

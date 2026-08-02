@@ -35,7 +35,7 @@ import {
  */
 
 export async function getModules(): Promise<LearningModule[]> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("modules")
     .select("id, sort_order, title, description, icon, active")
@@ -46,7 +46,7 @@ export async function getModules(): Promise<LearningModule[]> {
 }
 
 export async function getLessons(): Promise<Lesson[]> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("lessons")
     .select(
@@ -59,7 +59,7 @@ export async function getLessons(): Promise<Lesson[]> {
 }
 
 export async function getLessonBySlug(slug: string): Promise<Lesson | null> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("lessons")
     .select(
@@ -73,7 +73,7 @@ export async function getLessonBySlug(slug: string): Promise<Lesson | null> {
 }
 
 export async function getActionMatrix(): Promise<ActionMatrixEntry[]> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("action_matrix_entries")
     .select(
@@ -85,7 +85,7 @@ export async function getActionMatrix(): Promise<ActionMatrixEntry[]> {
 }
 
 export async function getObjections(): Promise<Objection[]> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("objections")
     .select(
@@ -97,7 +97,7 @@ export async function getObjections(): Promise<Objection[]> {
 }
 
 export async function getObjectionBySlug(slug: string): Promise<Objection | null> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("objections")
     .select(
@@ -111,7 +111,7 @@ export async function getObjectionBySlug(slug: string): Promise<Objection | null
 }
 
 export async function getSearchConcepts(): Promise<ConceptSummary[]> {
-  const supabase = createClient();
+  const supabase = await createClient();
   // "lessons(slug)" embebe la tabla relacionada vía la FK
   // search_concepts.lesson_id -> lessons.id (ver 0002_content_tables.sql).
   const { data, error } = await supabase

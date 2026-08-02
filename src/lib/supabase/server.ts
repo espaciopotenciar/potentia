@@ -10,8 +10,8 @@ import { cookies } from "next/headers";
  * (src/middleware.ts) ya se encarga de refrescar la sesión en cada
  * request.
  */
-export function createClient() {
-  const cookieStore = cookies();
+export async function createClient() {
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

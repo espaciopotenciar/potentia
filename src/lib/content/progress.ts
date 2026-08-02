@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
  * simplemente no puede traer filas de otro usuario aunque quisiera.
  */
 export async function getCompletedLessonIds(): Promise<Set<string>> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase.from("learning_progress").select("lesson_id");
 
   if (error) throw error;

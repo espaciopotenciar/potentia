@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { getObjectionBySlug, getLessons } from "@/lib/content/repository";
 import { ObjectionResult } from "@/components/objections/ObjectionResult";
 
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const objection = await getObjectionBySlug(params.slug);
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const objection = await getObjectionBySlug(slug);
   if (!objection) return { title: "Objeción no encontrada — Potentia" };
   return {
     title: `${objection.title} — Potentia`,
@@ -12,8 +13,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   };
 }
 
-export default async function ObjectionPage({ params }: { params: { slug: string } }) {
-  const [objection, lessons] = await Promise.all([getObjectionBySlug(params.slug), getLessons()]);
+export default async function ObjectionPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const [objection, lessons] = await Promise.all([getObjectionBySlug(slug), getLessons()]);
 
   if (!objection) {
     notFound();

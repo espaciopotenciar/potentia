@@ -24,7 +24,7 @@ interface SubscriptionRow {
 
 export default async function AdminPage() {
   const { userId } = await getAuthContext();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Lectura directa: las políticas RLS "profiles_select_own_or_admin" y
   // "subscriptions_select_own_or_admin" (0005_rls_policies.sql) ya le
