@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { NO_PLAN_VALUE, PLAN_CODE_OPTIONS, isPlanCode } from "@/lib/subscriptions/planCodes";
 
 export interface AdminUserRow {
   id: string;
@@ -46,7 +47,9 @@ function AdminUserRowItem({ user, isSelf }: { user: AdminUserRow; isSelf: boolea
   const router = useRouter();
   const [status, setStatus] = useState(user.status ?? "suspended");
   const [accessUntil, setAccessUntil] = useState(user.accessUntil ? user.accessUntil.slice(0, 10) : "");
-  const [planCode, setPlanCode] = useState(user.planCode ?? "");
+  const [planCode, setPlanCode] = useState(
+    user.planCode && isPlanCode(user.planCode) ? user.planCode : NO_PLAN_VALUE
+  );
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -66,7 +69,7 @@ function AdminUserRowItem({ user, isSelf }: { user: AdminUserRow; isSelf: boolea
         p_target_user_id: user.id,
         p_new_status: status,
         p_access_until: accessUntil ? new Date(`${accessUntil}T00:00:00Z`).toISOString() : null,
-        p_plan_code: planCode || null,
+        p_plan_code: planCode === NO_PLAN_VALUE ? null : planCode,
       });
 
       if (rpcError) {
@@ -101,13 +104,18 @@ function AdminUserRowItem({ user, isSelf }: { user: AdminUserRow; isSelf: boolea
         </select>
       </td>
       <td className="px-4 py-3">
-        <input
+        <select
           value={planCode}
           disabled={isSelf}
           onChange={(event) => setPlanCode(event.target.value)}
-          placeholder="plan_code"
-          className="w-28 rounded-lg border border-potentia-sand px-2 py-1.5 text-sm disabled:opacity-50"
-        />
+          className="rounded-lg border border-potentia-sand px-2 py-1.5 text-sm disabled:opacity-50"
+        >
+          {PLAN_CODE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </td>
       <td className="px-4 py-3 text-xs text-potentia-muted">
         {user.startsAt ? new Date(user.startsAt).toLocaleDateString("es-AR") : "—"}

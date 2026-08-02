@@ -1,6 +1,6 @@
 -- =====================================================================
 -- rollback.sql
--- Revierte por completo 0001-0006. Pensado para correrse manualmente
+-- Revierte por completo 0001-0007. Pensado para correrse manualmente
 -- (Supabase SQL editor o `supabase db execute`) si hace falta deshacer
 -- toda la migración durante la etapa de prueba en auth-mvp.
 --
@@ -21,6 +21,11 @@ drop trigger if exists lessons_set_updated_at on public.lessons;
 drop trigger if exists learning_progress_set_updated_at on public.learning_progress;
 drop trigger if exists subscriptions_set_updated_at on public.subscriptions;
 drop trigger if exists profiles_set_updated_at on public.profiles;
+
+-- Constraint de 0007 (también se iría con el `drop table ... cascade` de
+-- subscriptions más abajo, pero se deja explícito por claridad).
+alter table if exists public.subscriptions
+  drop constraint if exists subscriptions_plan_code_check;
 
 -- Funciones
 drop function if exists public.admin_set_subscription_status(uuid, text, timestamptz, text, text);
