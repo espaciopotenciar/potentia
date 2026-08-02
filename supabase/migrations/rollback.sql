@@ -24,6 +24,12 @@ drop trigger if exists profiles_set_updated_at on public.profiles;
 -- Funciones
 drop function if exists public.prevent_self_subscription_change();
 drop function if exists public.prevent_self_role_change();
+drop function if exists public.update_own_full_name(text);
+drop function if exists public.current_user_has_content_access();
+drop function if exists public.current_user_has_active_membership();
+drop function if exists public.is_current_user_admin();
+-- Nombres de la primera versión (con parámetro uuid), por si este
+-- rollback se corre contra un entorno que todavía tiene esa versión:
 drop function if exists public.has_content_access(uuid);
 drop function if exists public.has_active_membership(uuid);
 drop function if exists public.is_admin(uuid);

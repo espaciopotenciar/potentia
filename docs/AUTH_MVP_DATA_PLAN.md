@@ -8,43 +8,32 @@ repositorio, en la rama `auth-mvp`.
 
 Decisiones aprobadas incorporadas a este diseño:
 
-- Todo el contenido funcional (lecciones, módulos, teoría 4x4, objeciones,
-  matriz de acciones con sus plantillas, conceptos del buscador) pasa a ser
-  **privado** — sin ninguna parte gratuita dentro de la app.
+- Todo el contenido funcional pasa a ser **privado** — sin ninguna parte
+  gratuita dentro de la app.
 - Estados de membresía: `trial | active | past_due | suspended | cancelled`,
-  con "vencido" calculado por `access_until`, no almacenado como estado
-  aparte.
-- Nada de esto se ejecuta ni se despliega todavía — es la Etapa 1
-  ("Fundaciones de datos"), separada de login, panel admin, migración de
-  rutas y del nuevo hosting.
+  con "vencido" calculado por `access_until`.
+- Toda cuenta nace `suspended`, sin plan ni fechas — crear la cuenta y
+  habilitar el acceso son dos acciones administrativas distintas.
+- Nada de esto se ejecuta ni se despliega todavía.
 
-## Revisión aplicada sobre la primera versión de este plan
+## Historial de revisiones
 
-Esta es la segunda versión del SQL, con las correcciones pedidas:
-
-1. **`handle_new_user` ya no crea membresía en `trial`.** Crea la cuenta
-   `suspended`, sin plan ni fechas. Habilitar el acceso es un paso manual
-   aparte, hecho por una administradora.
-2. **Verificado y documentado** cuándo se dispara el trigger sobre
-   `auth.users` en el flujo de invitación: al **enviar** la invitación, no
-   al aceptarla (detalle en el punto 3 de abajo).
-3. **`plan_code` y `starts_at` pasan a ser nullable** (`access_until` ya lo
-   era). Sin valores falsos para satisfacer `NOT NULL`.
-4. **Se sacó la política de `UPDATE` genérica sobre `profiles`.** Un usuario
-   común ya no tiene ningún camino de escritura directa sobre la tabla —
-   solo puede llamar a la función `update_own_full_name()`, que únicamente
-   toca `full_name`.
-5. **Confirmado explícitamente** (tabla en el punto 6) que ninguna acción
-   administrativa es alcanzable con la publishable key.
-6. **El `content_seed.sql` completo ya se generó y se verificó** — ver
-   punto 5, con conteos reales, no estimados.
-
-Importante: para poder generar y verificar el seed completo (punto 6) hizo
-falta un runtime de Node.js, que este entorno no tenía. Con tu aprobación
-se instaló Node.js LTS localmente (vía winget) **solo para poder correr el
-generador y las verificaciones de abajo con datos reales** — no se conectó
-a Supabase ni se usó para nada más que leer `src/data/*.ts` y escribir
-archivos `.sql` en el repositorio.
+- **v1:** primera versión (tablas, funciones con parámetro, RLS básico).
+- **v2:** alta inicial en `suspended` (no `trial`), campos nullable en
+  `subscriptions`, `update_own_full_name` en vez de política de `UPDATE`
+  genérica, seed completo generado y verificado con Node real.
+- **v3 (esta versión):** dos correcciones de seguridad finales antes de
+  ejecutar:
+  1. `is_admin(uuid)`, `has_active_membership(uuid)`, `has_content_access(uuid)`
+     reemplazadas por versiones **sin parámetro** (`is_current_user_admin()`,
+     `current_user_has_active_membership()`, `current_user_has_content_access()`),
+     para que nadie pueda consultar la condición de otro usuario pasando su
+     UUID como argumento.
+  2. `admin_audit_log` ya no acepta `INSERT` de ningún `authenticated`
+     (ni siquiera admin) — solo `service_role` o una futura función
+     administrativa puede escribir ahí.
+  3. Cada función tiene ahora `REVOKE`/`GRANT` explícito, incluyendo un
+     `revoke ... from anon` explícito además de `revoke ... from public`.
 
 ---
 
@@ -57,73 +46,67 @@ Vive en `supabase/migrations/`, en 5 archivos que se aplican en orden:
 | `0001_profiles_subscriptions.sql` | Extensión `pgcrypto`, tabla `profiles`, tabla `subscriptions` |
 | `0002_content_tables.sql` | `modules`, `lessons`, `action_matrix_entries`, `objections`, `search_concepts` |
 | `0003_progress_audit.sql` | `learning_progress`, `admin_audit_log` |
-| `0004_functions_triggers.sql` | Funciones auxiliares + triggers |
+| `0004_functions_triggers.sql` | Funciones auxiliares + triggers + todos los `REVOKE`/`GRANT` |
 | `0005_rls_policies.sql` | `ENABLE ROW LEVEL SECURITY` + todas las políticas |
 | `rollback.sql` | Reversión completa (no se ejecuta automáticamente en ningún flujo) |
 
 Cada archivo está escrito para poder correrse más de una vez sin romper
 nada (`create table if not exists`, `create or replace function`,
-`drop trigger/policy if exists` antes de recrearlo).
+`drop trigger/policy/function if exists` antes de recrear).
 
 ## 2. Explicación de cada tabla
 
 | Tabla | Para qué sirve | Decisión de diseño clave |
 |---|---|---|
 | **`profiles`** | Perfil de aplicación de cada usuario de `auth.users` | `id` es el mismo `uuid` que `auth.users.id`; `role` restringido por `check` a `user`/`admin` |
-| **`subscriptions`** | Estado de membresía actual | Una sola fila por usuario (`unique(user_id)`). **Nace `suspended`, con `plan_code`, `starts_at` y `access_until` en `null`** — crear la cuenta y habilitar el acceso son dos acciones distintas (ver punto 3) |
+| **`subscriptions`** | Estado de membresía actual | Una sola fila por usuario (`unique(user_id)`). Nace `suspended`, con `plan_code`, `starts_at` y `access_until` en `null` |
 | **`modules`** | Los 5 módulos de Aprender | Igual forma que `src/data/modules.ts` |
 | **`lessons`** | Las 33 lecciones (incluida toda la teoría 4x4) | `content` es `jsonb` (array de párrafos) |
-| **`action_matrix_entries`** | Las 33 filas de la matriz de Accionar, con sus 3 plantillas de mensaje cada una | `unanswered_messages`, `sale_type`, `channel`, `has_agreed_date` en texto (no boolean/int) para preservar el comodín `"cualquiera"` del motor de decisión actual |
+| **`action_matrix_entries`** | Las 33 filas de la matriz de Accionar, con sus 3 plantillas cada una | Campos de condición en texto (no boolean/int) para preservar el comodín `"cualquiera"` del motor de decisión actual |
 | **`objections`** | Las 12 objeciones con sus 3 respuestas cada una | Misma estructura que `src/data/objections.ts` |
 | **`search_concepts`** | Índice curado de `/buscar` | `lesson_id` es una FK real a `lessons.id` |
 | **`learning_progress`** | Progreso por usuario y lección | `unique(user_id, lesson_id)` |
-| **`admin_audit_log`** | Historial de acciones administrativas | Append-only: sin `UPDATE` ni `DELETE` en ninguna política |
+| **`admin_audit_log`** | Historial de acciones administrativas | Append-only: ninguna política permite `UPDATE`/`DELETE`, y desde v3 tampoco `INSERT` para `authenticated` |
 
-**`subscriptions.plan_code` y `subscriptions.starts_at` ahora son
-nullable** (`access_until` ya lo era desde la primera versión). Una fila
-recién creada no tiene plan ni fecha de inicio todavía — obligar un valor
-no nulo ahí habría significado inventar una fecha o un plan falso.
+`subscriptions.plan_code` y `subscriptions.starts_at` son nullable
+(`access_until` ya lo era) — una fila recién creada no tiene plan ni fecha
+de inicio todavía.
 
-**Integridad referencial de `related_lesson_ids`:** en `lessons`,
-`action_matrix_entries` y `objections`, ese campo es `text[]`. Postgres no
-soporta FK sobre columnas array de forma nativa. La integridad se valida en
-`scripts/verifyContentSeed.ts` (ver punto 5) — corrida y confirmada sin
-errores contra el contenido real.
+**Integridad referencial de `related_lesson_ids`:** es `text[]` en
+`lessons`, `action_matrix_entries` y `objections`. Postgres no soporta FK
+sobre columnas array. La integridad se valida con
+`scripts/verifyContentSeed.ts` (ver punto 8) — corrida real, sin errores.
 
 ## 3. Explicación de cada función
 
-Todas viven en `0004_functions_triggers.sql`.
+Todas en `0004_functions_triggers.sql`.
 
-| Función | Tipo | Qué hace | `SECURITY DEFINER` |
-|---|---|---|---|
-| `set_updated_at()` | Trigger genérico | Actualiza `updated_at = now()` en cada `UPDATE` | No |
-| `handle_new_user()` | Trigger sobre `auth.users` | Crea `profiles` y una fila de `subscriptions` **`suspended`**, sin plan ni fechas | Sí (patrón estándar de Supabase) |
-| `is_admin(uuid)` | Helper RLS | `true` si `role = 'admin'` | Sí (evita recursión de RLS sobre `profiles`) |
-| `has_active_membership(uuid)` | Helper RLS | Regla exacta de acceso por estado (tabla abajo) | Sí |
-| `has_content_access(uuid)` | Helper RLS | `true` si hay membresía activa o el usuario es admin | Sí |
-| `update_own_full_name(text)` | RPC (nueva) | Único camino de escritura de un usuario común sobre su propia fila de `profiles`; toca solamente `full_name` | Sí |
-| `prevent_self_role_change()` | Trigger sobre `profiles` | Bloquea que alguien cambie su propio `role` | No |
-| `prevent_self_subscription_change()` | Trigger sobre `subscriptions` | Bloquea que alguien modifique su propia membresía | No |
+| Función | Qué hace | `SECURITY DEFINER` |
+|---|---|---|
+| `set_updated_at()` | Actualiza `updated_at` en cada `UPDATE` | No |
+| `handle_new_user()` | Crea `profiles` + `subscriptions` (`suspended`, sin plan ni fechas) al insertarse una fila en `auth.users` | Sí |
+| `is_current_user_admin()` | `true` si quien ejecuta la sesión tiene `role = 'admin'` | Sí |
+| `current_user_has_active_membership()` | Regla exacta de acceso por estado, para la sesión actual | Sí |
+| `current_user_has_content_access()` | `true` si hay membresía activa o la sesión es admin | Sí |
+| `update_own_full_name(text)` | Único camino de escritura de un usuario común sobre su propia fila de `profiles`; solo toca `full_name` | Sí |
+| `prevent_self_role_change()` | Bloquea que alguien cambie su propio `role` | No |
+| `prevent_self_subscription_change()` | Bloquea que alguien modifique su propia membresía | No |
+
+**Cambio v3:** `is_admin`, `has_active_membership` y `has_content_access`
+ya no existen con parámetro `uuid` — se reemplazaron por las tres
+versiones sin parámetro de la tabla de arriba. Detalle completo del porqué
+en la sección 6.
 
 ### ¿Cuándo se dispara `handle_new_user`? (verificado, no asumido)
 
-El trigger es `AFTER INSERT ON auth.users`. La pregunta era si esa fila se
-crea al **enviar** la invitación o al **aceptarla**. Con el método que este
-proyecto va a usar para altas administrativas —
-`supabase.auth.admin.inviteUserByEmail(email)` — Supabase inserta la fila
-en `auth.users` **de inmediato, al enviar la invitación**. La persona
-invitada todavía no puso una contraseña, no confirmó nada — la fila ya
-existe y el trigger ya corrió.
+El trigger es `AFTER INSERT ON auth.users`. Con
+`supabase.auth.admin.inviteUserByEmail(email)` — el método que este
+proyecto usa para altas administrativas — Supabase inserta la fila en
+`auth.users` **al enviar la invitación**, no al aceptarla. El diseño es
+seguro bajo ese supuesto porque el estado inicial es `suspended` (cero
+acceso), sin importar si la invitación se acepta o no.
 
-Esto es exactamente por lo que la corrección del punto 1 (nacer
-`suspended`, no `trial`) importa: bajo el diseño anterior, una invitación
-enviada y nunca aceptada habría dejado, técnicamente, una membresía en
-estado `trial` (acceso permitido) sin que nadie la hubiera activado. Con el
-diseño actual, esa misma situación deja una fila `suspended` (acceso
-bloqueado) — el diseño es seguro sin importar si la invitación se acepta en
-5 minutos, en 3 meses, o nunca.
-
-### Regla de acceso implementada en `has_active_membership`
+### Regla de acceso implementada en `current_user_has_active_membership`
 
 | `status` | ¿Acceso permitido? |
 |---|---|
@@ -134,147 +117,268 @@ bloqueado) — el diseño es seguro sin importar si la invitación se acepta en
 | `cancelled` | Sí, únicamente si `access_until` es futuro |
 | sin fila en `subscriptions` | No |
 
-Sin cambios respecto de la versión anterior — esta regla ya estaba
-aprobada; lo que cambió es el estado en el que nace la fila, no la regla
-que evalúa los estados.
-
 ## 4. Políticas RLS
 
-Todas en `0005_rls_policies.sql`, con el mismo principio de "negar por
-defecto".
+Todas en `0005_rls_policies.sql`, principio "negar por defecto".
 
 | Tabla | Quién puede leer | Quién puede escribir |
 |---|---|---|
-| `profiles` | El propio usuario, o un admin (todas) | **Nadie directamente.** Sin política de `UPDATE` para `authenticated`. El único camino es `update_own_full_name()`, que solo puede tocar `full_name` |
-| `subscriptions` | El propio usuario, o un admin (todas) | Nadie autenticado — únicamente `service_role` |
-| Tablas de contenido (`modules`, `lessons`, `action_matrix_entries`, `objections`, `search_concepts`) | Usuarios con `has_content_access()` en `true`, solo filas `active` | Nadie autenticado |
-| `learning_progress` | El propio usuario | El propio usuario (`INSERT`/`UPDATE`/`DELETE` de sus propias filas) — autoservicio legítimo |
-| `admin_audit_log` | Solo admins | Solo `INSERT`, solo admins, declarándose a sí mismos como autor |
+| `profiles` | El propio usuario, o un admin (todas) | Nadie directamente — solo `update_own_full_name()` |
+| `subscriptions` | El propio usuario, o un admin (todas) | Nadie autenticado — solo `service_role` |
+| Tablas de contenido | Con `current_user_has_content_access()` en `true`, solo filas `active` | Nadie autenticado |
+| `learning_progress` | El propio usuario | El propio usuario (autoservicio legítimo) |
+| `admin_audit_log` | Solo admins | **Nadie autenticado, ni siquiera admin** (cambio v3) — solo `service_role` |
 
-### Por qué `profiles` cambió de "política de UPDATE + trigger" a "sin política + función RPC"
+Ninguna tabla tiene política para `anon`: un visitante sin sesión obtiene
+siempre cero filas de cualquier tabla de contenido.
 
-La versión anterior tenía una política `profiles_update_own` que permitía
-`UPDATE` sobre la fila propia, confiando en el trigger
-`prevent_self_role_change` para bloquear específicamente la columna `role`.
-Funcionaba, pero dejaba potencialmente escribibles otras columnas sensibles
-(`email`, `created_at`) que no tenían un trigger dedicado.
+## 5. Políticas que llaman a las funciones de membresía
 
-RLS evalúa por **fila**, no por columna — no hay forma de decir "esta fila
-sí, pero esta columna no" directamente en una política. La solución más
-clara es no dar ningún permiso de `UPDATE` directo, y exponer una única
-función `SECURITY DEFINER` que solo sabe hacer una cosa (actualizar
-`full_name` de quien la llama). Es el mismo patrón que ya se pedía para las
-acciones administrativas (server-side, con un contrato explícito) aplicado
-también al autoservicio del usuario común.
+```sql
+-- profiles
+using (id = auth.uid() or public.is_current_user_admin())
 
-`prevent_self_role_change` se mantiene igual, ahora como defensa en
-profundidad: con el diseño actual ya no hay ningún camino de `UPDATE`
-directo sobre `profiles` para un usuario autenticado, así que el trigger no
-tiene nada que bloquear en el uso normal — pero si en el futuro alguien
-agrega una política de `UPDATE` sin pensarlo dos veces, el trigger sigue
-ahí.
+-- subscriptions
+using (user_id = auth.uid() or public.is_current_user_admin())
 
-## 5. El seed — ya generado y verificado (no aplicado)
+-- modules / lessons / action_matrix_entries / objections
+using (active and public.current_user_has_content_access())
 
-### Resumen de registros (real, verificado — no estimado)
+-- search_concepts
+using (public.current_user_has_content_access())
+
+-- admin_audit_log (solo SELECT)
+using (public.is_current_user_admin())
+```
+
+## 6. Permisos de funciones `SECURITY DEFINER` (corrección v3)
+
+### Por qué el reemplazo por funciones sin parámetro, no solo "restringir el uso"
+
+No hay ninguna forma en Postgres de decir "esta función se puede llamar,
+pero solo pasando el propio `auth.uid()` como argumento" — `GRANT EXECUTE`
+es binario. Con `is_admin(uuid)` y `GRANT EXECUTE` a `authenticated`,
+cualquier usuario podía hacer:
+
+```
+supabase.rpc('is_admin', { p_user_id: '<uuid de otra persona>' })
+```
+
+y enterarse del rol de esa persona sin pasar por ninguna tabla ni
+política — una fuga de información real. La solución de fondo es que la
+función no reciba ningún identificador de usuario del cliente: por eso el
+reemplazo completo, sin mantener las variantes con parámetro. Ninguna
+política RLS de este proyecto necesita evaluar la condición de un usuario
+distinto del que ejecuta la consulta, así que no había motivo técnico para
+conservarlas. Las futuras funciones administrativas (Etapa 5) que sí
+necesitan operar sobre un `target_user_id` van a ser funciones nuevas y
+dedicadas (ver el patrón de la sección 7), no una reutilización de estos
+helpers de sesión.
+
+### REVOKE y GRANT exactos
+
+```sql
+-- is_current_user_admin()
+revoke all on function public.is_current_user_admin() from public;
+revoke all on function public.is_current_user_admin() from anon;
+grant execute on function public.is_current_user_admin() to authenticated;
+
+-- current_user_has_active_membership()
+revoke all on function public.current_user_has_active_membership() from public;
+revoke all on function public.current_user_has_active_membership() from anon;
+grant execute on function public.current_user_has_active_membership() to authenticated;
+
+-- current_user_has_content_access()
+revoke all on function public.current_user_has_content_access() from public;
+revoke all on function public.current_user_has_content_access() from anon;
+grant execute on function public.current_user_has_content_access() to authenticated;
+
+-- update_own_full_name(text)
+revoke all on function public.update_own_full_name(text) from public;
+revoke all on function public.update_own_full_name(text) from anon;
+grant execute on function public.update_own_full_name(text) to authenticated;
+
+-- handle_new_user() — función de trigger, nunca debe llamarse como RPC
+revoke all on function public.handle_new_user() from public;
+-- Sin GRANT a nadie. El trigger la dispara igual: el mecanismo de
+-- triggers no pasa por el chequeo de EXECUTE de una llamada RPC normal.
+
+-- Funciones de trigger auxiliares (defensa en profundidad, mismo motivo):
+revoke all on function public.set_updated_at() from public;
+revoke all on function public.prevent_self_role_change() from public;
+revoke all on function public.prevent_self_subscription_change() from public;
+```
+
+`revoke ... from public` ya bloquea a `anon` (`PUBLIC` es un pseudo-rol
+del que todo rol es miembro), pero se agregó el `revoke ... from anon`
+explícito en las cuatro funciones con algún `GRANT`, para que quede
+inequívoco en el propio SQL.
+
+### Quién puede ejecutar qué
+
+| Función | `anon` | `authenticated` | `service_role` |
+|---|---|---|---|
+| `is_current_user_admin()` | ❌ | ✅ | ✅ |
+| `current_user_has_active_membership()` | ❌ | ✅ | ✅ |
+| `current_user_has_content_access()` | ❌ | ✅ | ✅ |
+| `update_own_full_name(text)` | ❌ | ✅ | ✅ |
+| `handle_new_user()` | ❌ | ❌ | ✅ (solo vía trigger) |
+| `set_updated_at()` / `prevent_self_role_change()` / `prevent_self_subscription_change()` | ❌ | ❌ | ✅ (solo vía trigger) |
+
+`authenticated` necesita `GRANT EXECUTE` sobre las tres funciones de
+sesión porque Postgres exige permiso de `EXECUTE` a quien ejecuta la
+consulta que dispara la política RLS, sin importar que la función sea
+`SECURITY DEFINER` (eso solo cambia con qué privilegios corre el *cuerpo*
+de la función). Que queden invocables como RPC directa ya no es un
+problema: al no aceptar ningún UUID ajeno, un usuario solo puede
+enterarse de *su propio* estado.
+
+## 7. `admin_audit_log` (corrección v3)
+
+### Políticas finales
+
+```sql
+alter table public.admin_audit_log enable row level security;
+
+drop policy if exists "admin_audit_log_select_admin_only" on public.admin_audit_log;
+create policy "admin_audit_log_select_admin_only"
+  on public.admin_audit_log for select
+  to authenticated
+  using (public.is_current_user_admin());
+
+-- Sin ninguna policy de INSERT, UPDATE ni DELETE para 'authenticated'.
+```
+
+La v2 tenía una política de `INSERT` para admins (con `WITH CHECK
+(is_admin(auth.uid()) AND admin_user_id = auth.uid())`) que ya impedía
+insertar "a nombre de" otro admin, pero seguía dejando la escritura
+alcanzable con la publishable key. Ahora no existe ningún camino de
+escritura para `authenticated`, ni siquiera admin.
+
+| Acción | `anon` | `authenticated` (no admin) | `authenticated` (admin) | `service_role` |
+|---|---|---|---|---|
+| `SELECT` | ❌ | ❌ | ✅ | ✅ |
+| `INSERT` | ❌ | ❌ | ❌ | ✅ |
+| `UPDATE` / `DELETE` | ❌ | ❌ | ❌ | ❌ (nadie — append-only) |
+
+### El patrón para las futuras operaciones administrativas (Etapa 5 — referencia, no se crea todavía)
+
+El requisito de que el registro de auditoría "no dependa de una segunda
+llamada desde el frontend" es una decisión de arquitectura que conviene
+dejar documentada ahora. Cada operación administrativa va a ser **una sola
+función `SECURITY DEFINER`**: al ser `plpgsql`, todo su cuerpo corre como
+una transacción implícita — si cualquier paso falla, Postgres revierte
+todo, incluida la inserción del audit log.
+
+```sql
+-- REFERENCIA — no se crea en esta etapa, no se ejecuta.
+create or replace function public.admin_set_subscription_status(
+  p_target_user_id uuid,
+  p_new_status text,
+  p_access_until timestamptz default null,
+  p_notes text default null
+)
+returns public.subscriptions
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_previous public.subscriptions;
+  v_updated  public.subscriptions;
+begin
+  -- 1. Verificación del rol admin.
+  if not public.is_current_user_admin() then
+    raise exception 'Solo una administradora puede ejecutar esta acción.';
+  end if;
+
+  -- 2. Lectura del valor anterior (para el log).
+  select * into v_previous from public.subscriptions where user_id = p_target_user_id;
+
+  -- 3. Modificación de subscription.
+  update public.subscriptions
+  set status = p_new_status, access_until = p_access_until, notes = coalesce(p_notes, notes)
+  where user_id = p_target_user_id
+  returning * into v_updated;
+
+  -- 4. Inserción del admin_audit_log, en la MISMA transacción.
+  insert into public.admin_audit_log (admin_user_id, target_user_id, action, previous_value, new_value)
+  values (auth.uid(), p_target_user_id, 'subscription_status_change', to_jsonb(v_previous), to_jsonb(v_updated));
+
+  -- 5. Confirmación transaccional: implícita. Si algo falló arriba, todo
+  -- se revierte solo; si se llega hasta acá, Postgres confirma el cambio
+  -- y el log juntos.
+  return v_updated;
+end;
+$$;
+
+revoke all on function public.admin_set_subscription_status(uuid, text, timestamptz, text) from public;
+revoke all on function public.admin_set_subscription_status(uuid, text, timestamptz, text) from anon;
+grant execute on function public.admin_set_subscription_status(uuid, text, timestamptz, text) to authenticated;
+```
+
+El `GRANT EXECUTE` es a `authenticated`, no a un rol "admin" aparte — la
+verificación pasa **dentro** de la función (paso 1); cualquier
+`authenticated` que no sea admin recibe la excepción y no llega a tocar
+nada. El frontend hace una sola llamada RPC, nunca dos pasos separados
+donde el segundo (el log) dependa del éxito del primero.
+
+## 8. El seed — generado y verificado
+
+### Resumen de registros (real, verificado)
 
 ```
 modules:      5
 lessons:      33
-actionMatrix: 33   ← no 23; ver nota abajo
+actionMatrix: 33
 objections:   12
 concepts:     9
 ```
 
-**Nota sobre el número de la matriz de acciones:** en el diagnóstico
-anterior yo había escrito "23 filas" — era una estimación incorrecta de mi
-parte, no un conteo real. El conteo real, verificado ahora con
-`grep -c` sobre `src/data/actionMatrix.ts` y confirmado por el generador,
-es **33**. Ya corregí las dos menciones a "23" en `docs/AUTH_MVP_PLAN.md` y
-en este documento.
+### Verificación ejecutada
 
-### Verificación de integridad ejecutada
+`scripts/verifyContentSeed.ts` — sin conectarse a Supabase, solo lee
+`src/data/*.ts` — corrobora: sin IDs/slugs duplicados; todo `moduleId`,
+`related_lesson_ids` y `lessonSlug` resuelve a un registro real; ninguna
+plantilla de mensaje supera las 5 variables requeridas. Resultado real:
+`OK: sin errores de referencias cruzadas ni duplicados.`
 
-`scripts/verifyContentSeed.ts` (nuevo) — no se conecta a Supabase, solo lee
-`src/data/*.ts` — corrobora:
-
-- Sin IDs duplicados en `lessons`, `actionMatrix`, `objections`, `concepts`.
-- Sin slugs de `lessons` duplicados.
-- Todo `lessons[].moduleId` referencia un `modules.id` real.
-- Todo `related_lesson_ids` (en `lessons`, `actionMatrix` y `objections`)
-  referencia un `lessons.id` real.
-- Todo `concepts[].lessonSlug` referencia un `lessons.slug` real.
-- Ninguna plantilla de mensaje de `actionMatrix` supera las 5 variables
-  requeridas (regla original de Accionar).
-
-Resultado real de la corrida: **`OK: sin errores de referencias cruzadas ni
-duplicados.`**
-
-### Idempotencia — verificada, no solo declarada
-
-Se corrió `npm run seed:generate` dos veces seguidas y se compararon los
-dos archivos generados con `diff`: **son byte a byte idénticos.** El
-generador es determinístico. Además, cada `INSERT` individual usa
-`ON CONFLICT (id) DO UPDATE`, así que aplicar el `content_seed.sql`
-resultante contra la base una, dos o diez veces deja el mismo estado final.
+**Idempotencia verificada:** se corrió el generador dos veces y se
+compararon los archivos con `diff` — idénticos byte a byte. Cada `INSERT`
+usa `ON CONFLICT (id) DO UPDATE`.
 
 ### Los archivos
 
-1. **`supabase/seed/sample_seed_preview.sql`** — muestra a mano de 5
-   registros (1 módulo, 1 lección, 1 fila de matriz, 1 objeción, 1
-   concepto), copiada y verificada línea por línea contra el código fuente.
-   Sigue sirviendo para revisar el patrón sin mirar un archivo de 375
-   líneas.
-2. **`supabase/seed/content_seed.sql`** — **el seed completo, ya generado**
-   (92 `INSERT`, uno por cada registro real de `src/data/*.ts`: 5 + 33 + 33
-   + 12 + 9). Generado con `scripts/generateContentSeed.ts`, verificado con
-   `scripts/verifyContentSeed.ts`. **No se aplicó contra Supabase** —
-   sigue esperando aprobación, igual que el resto de las migraciones.
+1. `supabase/seed/sample_seed_preview.sql` — muestra a mano de 5 registros,
+   verificada línea por línea.
+2. `supabase/seed/content_seed.sql` — el seed completo, 92 `INSERT` (5+33+33+12+9),
+   generado con `scripts/generateContentSeed.ts`. **No se aplicó contra
+   Supabase.**
 
 ```bash
-npm run seed:generate   # regenera supabase/seed/content_seed.sql desde src/data/*.ts
-npx tsx scripts/verifyContentSeed.ts   # corre las verificaciones de arriba
+npm run seed:generate                    # regenera content_seed.sql
+npx tsx scripts/verifyContentSeed.ts     # corre las verificaciones
 ```
 
-## 6. Confirmación: acciones administrativas, solo del lado del servidor
+## 9. Estrategia de rollback
 
-| Acción | ¿Alcanzable con la publishable key desde el cliente? | Por qué no |
-|---|---|---|
-| Activar membresía | No | Sin política de `INSERT`/`UPDATE` en `subscriptions` para `authenticated` |
-| Suspender | No | Igual |
-| Cancelar | No | Igual |
-| Reactivar | No | Igual |
-| Cambiar plan (`plan_code`) | No | Igual |
-| Cambiar `access_until` | No | Igual |
-| Cambiar `role` | No | Sin política de `UPDATE` en `profiles`; y aunque existiera, `prevent_self_role_change` bloquea el auto-cambio |
+`supabase/migrations/rollback.sql` revierte 0001–0005 completo, en orden
+inverso, respetando las dependencias de FK. Actualizado en v3 para dropear
+los nombres de función nuevos (y conserva los nombres viejos por si se
+corre contra un entorno que todavía tuviera la v1). No se ejecuta
+automáticamente en ningún flujo; no borra la extensión `pgcrypto`; borra
+todo el contenido y usuarios de las tablas de esta migración — estrictamente
+para el entorno de prueba.
 
-Las siete quedan exclusivamente accesibles vía `service_role` — hoy desde
-el SQL Editor de Supabase Studio (operación manual del punto 7), más
-adelante desde funciones server-side del panel administrativo (Etapa 5),
-nunca desde el navegador con la publishable key.
+## 10. Cómo crear el primer administrador de forma segura
 
-## 7. Estrategia de rollback
-
-Sin cambios respecto de la versión anterior. `supabase/migrations/rollback.sql`
-revierte 0001–0005 completo, en orden inverso, no se ejecuta automáticamente
-en ningún flujo, no borra la extensión `pgcrypto`, y es estrictamente para
-el entorno de prueba (borra todo el contenido y usuarios de las tablas de
-esta migración).
-
-## 8. Cómo crear el primer administrador de forma segura
-
-Ajustado al nuevo estado inicial (ya no hay un `trial` automático que
-mencionar):
-
-1. **Authentication → Users → Invite user** en el dashboard de Supabase,
-   con el email real del primer administrador. Esto dispara
-   `handle_new_user`: se crea su `profiles` (`role = 'user'`) y su
-   `subscriptions` (`suspended`, sin plan ni fechas) — igual que cualquier
-   otro usuario nuevo, sin ningún trato especial todavía.
+1. **Authentication → Users → Invite user** en el dashboard de Supabase.
+   Dispara `handle_new_user`: se crea `profiles` (`role = 'user'`) y
+   `subscriptions` (`suspended`, sin plan ni fechas) — sin trato especial.
 2. La persona acepta la invitación y confirma su cuenta.
-3. En el **SQL Editor** de Supabase Studio (corre como `postgres`, no como
-   un usuario autenticado — el trigger `prevent_self_role_change` no
-   aplica ahí), ejecutar una sola vez:
+3. En el **SQL Editor** de Supabase Studio (corre como `postgres`, no
+   pasa por RLS ni por los `GRANT` de `authenticated`/`anon`), ejecutar
+   una sola vez:
 
    ```sql
    update public.profiles
@@ -282,8 +386,7 @@ mencionar):
    where email = 'el-email-real-de-la-persona@dominio.com';
    ```
 
-4. Si además esa persona va a poder usar la app (no sería obligatorio para
-   administrar), habilitar también su propio acceso:
+4. Si esa persona también va a usar la app, habilitar su acceso:
 
    ```sql
    update public.subscriptions
@@ -291,10 +394,29 @@ mencionar):
    where user_id = (select id from public.profiles where email = 'el-email-real-de-la-persona@dominio.com');
    ```
 
-5. Confirmar con `select id, email, role from public.profiles where role =
-   'admin';`.
+5. Confirmar con `select id, email, role from public.profiles where role = 'admin';`.
 
 Este paso no se automatiza ni se deja en un script versionado a propósito.
+
+## 11. Confirmaciones finales pedidas
+
+- **`anon` no puede ejecutar ninguna RPC interna:** confirmado — las ocho
+  funciones de `0004_functions_triggers.sql` tienen `revoke ... from
+  public` y ninguna tiene `grant ... to anon`. Las cuatro con algún
+  `GRANT` lo tienen exclusivamente hacia `authenticated`.
+- **`authenticated` no puede escribir auditoría:** confirmado —
+  `0005_rls_policies.sql` no define ninguna política de
+  `INSERT`/`UPDATE`/`DELETE` para `authenticated` sobre `admin_audit_log`.
+  RLS activado sin política = denegado por defecto.
+- **La publishable key no puede modificar roles ni membresías:**
+  confirmado — ninguna tabla tiene política de `UPDATE` para
+  `authenticated` que alcance `role` (`profiles`) ni ningún campo de
+  `subscriptions`. El único camino de escritura de un usuario común sobre
+  su propia fila es `update_own_full_name(text)`, que solo toca
+  `full_name`. Todo cambio de `role` o de `subscriptions` requiere
+  `service_role` (hoy, manual — sección 10) o, más adelante, una función
+  `SECURITY DEFINER` administrativa como la de la sección 7, siempre
+  validando `is_current_user_admin()` antes de escribir.
 
 ---
 

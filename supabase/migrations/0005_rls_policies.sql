@@ -6,6 +6,10 @@
 -- RLS activado sin políticas = nadie (salvo service_role, que siempre
 -- bypassea RLS) puede leer ni escribir nada. Cada política de abajo es
 -- una excepción explícita y mínima a esa regla.
+--
+-- Cada "create policy" va precedido de "drop policy if exists" para que
+-- este archivo se pueda volver a correr sin fallar por "ya existe" —
+-- igual que el resto de las migraciones.
 -- =====================================================================
 
 alter table public.profiles              enable row level security;
@@ -22,10 +26,11 @@ alter table public.admin_audit_log       enable row level security;
 -- profiles
 -- ---------------------------------------------------------------------
 -- Un usuario ve su propio perfil; un admin ve todos.
+drop policy if exists "profiles_select_own_or_admin" on public.profiles;
 create policy "profiles_select_own_or_admin"
   on public.profiles for select
   to authenticated
-  using (id = auth.uid() or public.is_admin(auth.uid()));
+  using (id = auth.uid() or public.is_current_user_admin());
 
 -- Deliberadamente SIN política de UPDATE para 'authenticated' sobre esta
 -- tabla. RLS opera por fila, no por columna: una política de UPDATE
@@ -44,10 +49,11 @@ create policy "profiles_select_own_or_admin"
 -- subscriptions
 -- ---------------------------------------------------------------------
 -- Un usuario ve SU propio estado de membresía; un admin ve todas.
+drop policy if exists "subscriptions_select_own_or_admin" on public.subscriptions;
 create policy "subscriptions_select_own_or_admin"
   on public.subscriptions for select
   to authenticated
-  using (user_id = auth.uid() or public.is_admin(auth.uid()));
+  using (user_id = auth.uid() or public.is_current_user_admin());
 
 -- Deliberadamente NO hay políticas de INSERT/UPDATE/DELETE para
 -- 'authenticated' (ni siquiera para admin): las altas/suspensiones/
@@ -65,30 +71,35 @@ create policy "subscriptions_select_own_or_admin"
 -- Sin ninguna política para 'anon': un visitante sin sesión obtiene
 -- siempre 0 filas, sin importar qué pida el frontend.
 -- ---------------------------------------------------------------------
+drop policy if exists "modules_select_members" on public.modules;
 create policy "modules_select_members"
   on public.modules for select
   to authenticated
-  using (active and public.has_content_access(auth.uid()));
+  using (active and public.current_user_has_content_access());
 
+drop policy if exists "lessons_select_members" on public.lessons;
 create policy "lessons_select_members"
   on public.lessons for select
   to authenticated
-  using (active and public.has_content_access(auth.uid()));
+  using (active and public.current_user_has_content_access());
 
+drop policy if exists "action_matrix_select_members" on public.action_matrix_entries;
 create policy "action_matrix_select_members"
   on public.action_matrix_entries for select
   to authenticated
-  using (active and public.has_content_access(auth.uid()));
+  using (active and public.current_user_has_content_access());
 
+drop policy if exists "objections_select_members" on public.objections;
 create policy "objections_select_members"
   on public.objections for select
   to authenticated
-  using (active and public.has_content_access(auth.uid()));
+  using (active and public.current_user_has_content_access());
 
+drop policy if exists "search_concepts_select_members" on public.search_concepts;
 create policy "search_concepts_select_members"
   on public.search_concepts for select
   to authenticated
-  using (public.has_content_access(auth.uid()));
+  using (public.current_user_has_content_access());
 
 -- Sin políticas de escritura en ninguna tabla de contenido: el contenido
 -- se administra por migraciones/seed (service role) hoy, y por un futuro
@@ -100,22 +111,26 @@ create policy "search_concepts_select_members"
 -- CRUD completo, pero estrictamente acotado a las propias filas del
 -- usuario. Esto es autoservicio legítimo (marcar/desmarcar una lección
 -- propia), a diferencia de subscriptions.
+drop policy if exists "learning_progress_select_own" on public.learning_progress;
 create policy "learning_progress_select_own"
   on public.learning_progress for select
   to authenticated
   using (user_id = auth.uid());
 
+drop policy if exists "learning_progress_insert_own" on public.learning_progress;
 create policy "learning_progress_insert_own"
   on public.learning_progress for insert
   to authenticated
   with check (user_id = auth.uid());
 
+drop policy if exists "learning_progress_update_own" on public.learning_progress;
 create policy "learning_progress_update_own"
   on public.learning_progress for update
   to authenticated
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
+drop policy if exists "learning_progress_delete_own" on public.learning_progress;
 create policy "learning_progress_delete_own"
   on public.learning_progress for delete
   to authenticated
@@ -124,16 +139,18 @@ create policy "learning_progress_delete_own"
 -- ---------------------------------------------------------------------
 -- admin_audit_log
 -- ---------------------------------------------------------------------
--- Solo lectura para admins. Inserción permitida solo si la fila que se
--- intenta insertar declara al propio admin autenticado como autor
--- (admin_user_id = auth.uid()) — evita que un admin registre una acción
--- "a nombre de" otro admin. Sin UPDATE ni DELETE: registro append-only.
+-- Solo lectura para admins. SIN ninguna política de INSERT, UPDATE ni
+-- DELETE para 'authenticated' — ni siquiera para admins. La única forma
+-- de escribir en esta tabla es service_role (o, más adelante, una función
+-- SECURITY DEFINER administrativa que la propia Etapa 5 va a crear, y que
+-- va a insertar el registro de auditoría como parte de la misma
+-- transacción que hace el cambio — ver la nota de diseño en
+-- docs/AUTH_MVP_DATA_PLAN.md). Registro append-only: nunca se actualiza
+-- ni se borra una fila existente, ni siquiera por un admin.
+drop policy if exists "admin_audit_log_select_admin_only" on public.admin_audit_log;
 create policy "admin_audit_log_select_admin_only"
   on public.admin_audit_log for select
   to authenticated
-  using (public.is_admin(auth.uid()));
+  using (public.is_current_user_admin());
 
-create policy "admin_audit_log_insert_admin_only"
-  on public.admin_audit_log for insert
-  to authenticated
-  with check (public.is_admin(auth.uid()) and admin_user_id = auth.uid());
+-- (Deliberadamente no hay policy de INSERT/UPDATE/DELETE acá. Ver nota arriba.)
