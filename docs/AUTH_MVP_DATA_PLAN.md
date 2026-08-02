@@ -1,10 +1,14 @@
 # Potentia — Fundaciones de datos en Supabase (Etapa 1 de auth-mvp)
 
-Estado: **SQL preparado, sin ejecutar.** Nada de este documento ni de los
-archivos que describe se aplicó todavía contra el proyecto Supabase
-(`rwxiatwaqlhyazwywsyh`). No se usó ninguna credencial: este trabajo no
-necesitó ninguna, solo se escribieron archivos `.sql` y scripts en el
-repositorio, en la rama `auth-mvp`.
+Estado: **EJECUTADO** contra el proyecto Supabase `rwxiatwaqlhyazwywsyh`
+(migraciones 0001–0005 + `content_seed.sql`), vía SQL Editor de Supabase
+Studio (sin usar ninguna credencial privada — no hubo CLI ni acceso
+programático). Verificado con `supabase/verify_stage1.sql`: 9 tablas, RLS
+activo en las 9, 9 funciones, 10 triggers (11 filas por el evento doble de
+`admin_audit_log_prevent_mutation`), 12 políticas, 92 registros de
+contenido sin duplicados ni huérfanos, y los `GRANT`/`REVOKE` finales
+confirmados uno por uno. Detalle completo al final de este documento.
+Ningún usuario ni administrador fue creado todavía.
 
 Decisiones aprobadas incorporadas a este diseño:
 
@@ -499,5 +503,81 @@ Este paso no se automatiza ni se deja en un script versionado a propósito.
 
 ---
 
-**No se ejecutó nada de este SQL contra Supabase.** Queda a la espera de tu
-aprobación para aplicarlo en el entorno de prueba.
+## 12. Resultado de la ejecución (Etapa 1 completada)
+
+**Método:** SQL Editor de Supabase Studio, archivo por archivo (0001 →
+0002 → 0003 → 0004 → 0005), con confirmación entre cada uno. Después,
+`content_seed.sql` completo. Ninguna credencial privada fue compartida ni
+usada — no hubo CLI ni conexión programática.
+
+**Hallazgo durante la verificación (ya corregido):** `handle_new_user()`,
+`set_updated_at()`, `prevent_self_role_change()` y
+`prevent_self_subscription_change()` tenían `EXECUTE` otorgado a `anon` y
+`authenticated` pese al `revoke ... from public` que ya tenían. Causa: los
+"default privileges" que Supabase aplica automáticamente a toda función
+nueva del schema `public` otorgan `EXECUTE` directo a `anon`/
+`authenticated`/`service_role`, además del `GRANT` implícito de Postgres a
+`PUBLIC` — revocar de `PUBLIC` no alcanza para quitar esos grants directos.
+Se corrigió agregando `revoke ... from anon` y `revoke ... from
+authenticated` explícitos a las cuatro funciones (en el repo y contra el
+proyecto real), replicando el patrón que `prevent_audit_log_mutation` ya
+tenía. Verificado después de la corrección: las cuatro quedaron con
+`EXECUTE` únicamente para `postgres`/`service_role`.
+
+**Verificación final (`verify_stage1.sql`), confirmada con datos reales del proyecto:**
+
+- 9 tablas creadas: `profiles`, `subscriptions`, `modules`, `lessons`,
+  `action_matrix_entries`, `objections`, `search_concepts`,
+  `learning_progress`, `admin_audit_log`.
+- RLS habilitado (`true`) en las 9.
+- 9 funciones creadas, con `SECURITY DEFINER` exactamente donde
+  correspondía (las 5 que necesitan leer/escribir por fuera del usuario
+  actual: `handle_new_user`, `is_current_user_admin`,
+  `current_user_has_active_membership`, `current_user_has_content_access`,
+  `update_own_full_name`; las 4 funciones de trigger puro, sin).
+- 10 triggers creados (11 filas en `information_schema.triggers` porque
+  `admin_audit_log_prevent_mutation` cuenta una vez por evento —
+  `UPDATE` y `DELETE`).
+- Conteo de contenido: `modules` 5, `lessons` 33, `action_matrix_entries`
+  33, `objections` 12, `search_concepts` 9 — **92 registros**, coincide
+  exactamente con lo esperado.
+- Sin IDs duplicados ni slugs duplicados en ninguna tabla de contenido.
+- Activas = total en las 4 tablas de contenido con columna `active`
+  (`modules` 5/5, `lessons` 33/33, `action_matrix_entries` 33/33,
+  `objections` 12/12).
+- FK sin huérfanos: `lessons.module_id` → 0, `search_concepts.lesson_id` → 0.
+- 12 políticas creadas, **todas `to authenticated`** — ninguna política
+  para `anon` en ninguna tabla.
+- `GRANT EXECUTE` final por función, confirmado:
+
+  | Función | Roles con EXECUTE |
+  |---|---|
+  | `is_current_user_admin` | `authenticated`, `postgres`, `service_role` |
+  | `current_user_has_active_membership` | `authenticated`, `postgres`, `service_role` |
+  | `current_user_has_content_access` | `authenticated`, `postgres`, `service_role` |
+  | `update_own_full_name` | `authenticated`, `postgres`, `service_role` |
+  | `handle_new_user` | `postgres`, `service_role` |
+  | `set_updated_at` | `postgres`, `service_role` |
+  | `prevent_self_role_change` | `postgres`, `service_role` |
+  | `prevent_self_subscription_change` | `postgres`, `service_role` |
+  | `prevent_audit_log_mutation` | `postgres`, `service_role` |
+
+  Ningún `anon` en ninguna fila. `authenticated` únicamente en las cuatro
+  funciones "de usuario" — exactamente lo pedido.
+
+**Prueba del log inmutable (postergada según lo acordado):** no se insertó
+ningún registro de prueba en `admin_audit_log` porque hubiera requerido
+inventar UUIDs de `admin_user_id`/`target_user_id` sin usuarios reales
+todavía. Se confirmó, en cambio, que `prevent_audit_log_mutation()` existe
+(`security_definer = false`, como corresponde a una función de trigger
+simple) y que el trigger `admin_audit_log_prevent_mutation` está activo
+sobre `admin_audit_log` para los eventos `UPDATE` y `DELETE`. La prueba con
+un `INSERT`/`UPDATE`/`DELETE` real queda pendiente para cuando existan
+usuarios reales.
+
+**Errores encontrados:** uno (el de permisos de las 4 funciones de
+trigger, arriba), corregido y reverificado. Ningún otro error en las 5
+migraciones ni en el seed.
+
+**Usuarios creados:** ninguno. **`rollback.sql`:** no se ejecutó.
+**`main`:** no se modificó.
