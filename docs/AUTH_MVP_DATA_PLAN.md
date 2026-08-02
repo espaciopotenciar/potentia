@@ -18,7 +18,9 @@ Decisiones aprobadas incorporadas a este diseño:
   con "vencido" calculado por `access_until`.
 - Toda cuenta nace `suspended`, sin plan ni fechas — crear la cuenta y
   habilitar el acceso son dos acciones administrativas distintas.
-- Nada de esto se ejecuta ni se despliega todavía.
+- Estas fundaciones de datos ya están aplicadas contra Supabase (ver
+  sección 12). Lo que todavía no existe es login, panel administrativo,
+  hosting de prueba ni ningún usuario — eso es la Etapa 2 en adelante.
 
 ## Historial de revisiones
 
