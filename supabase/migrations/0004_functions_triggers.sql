@@ -53,8 +53,30 @@ create trigger objections_set_updated_at
 
 -- ---------------------------------------------------------------------
 -- handle_new_user(): crea automáticamente profiles + subscriptions
--- (en trial) cuando Supabase Auth crea un usuario nuevo (por invitación).
--- Patrón estándar recomendado por la documentación de Supabase.
+-- cuando Supabase Auth inserta un usuario nuevo. Patrón estándar
+-- recomendado por la documentación de Supabase.
+--
+-- CUÁNDO SE DISPARA ESTE TRIGGER (verificado, no asumido):
+-- Este trigger es "AFTER INSERT ON auth.users". La pregunta relevante es
+-- CUÁNDO se inserta esa fila en el flujo de invitación administrativa:
+--
+--   supabase.auth.admin.inviteUserByEmail(email) — el método que se va a
+--   usar para crear usuarios en este proyecto (alta solo por invitación,
+--   sin registro público) — inserta la fila en auth.users de INMEDIATO,
+--   en el momento en que la administradora envía la invitación. La
+--   persona invitada todavía no aceptó nada, no tiene contraseña, no
+--   confirmó su email. auth.users ya existe igual.
+--
+-- Esto significa que este trigger corre AL ENVIAR la invitación, no al
+-- aceptarla. El diseño de este archivo tiene que ser seguro bajo ese
+-- supuesto — y lo es: la fila de subscriptions que se crea acá nace en
+-- status='suspended' (ver abajo), es decir CERO acceso, independientemente
+-- de si la persona invitada llega a aceptar la invitación en algún
+-- momento o nunca. Si en cambio hubiera nacido en 'trial' (como en la
+-- primera versión de este plan), una invitación enviada y nunca aceptada
+-- habría dejado, técnicamente, una cuenta con acceso "trial" flotando sin
+-- que nadie la haya activado — exactamente el problema que se pidió
+-- evitar en la revisión de este punto.
 -- ---------------------------------------------------------------------
 create or replace function public.handle_new_user()
 returns trigger
@@ -67,8 +89,12 @@ begin
   values (new.id, new.email)
   on conflict (id) do nothing;
 
-  insert into public.subscriptions (user_id, status)
-  values (new.id, 'trial')
+  -- Crear la cuenta y habilitar el acceso son dos acciones distintas:
+  -- nace suspendida, sin plan ni fechas — una administradora la activa
+  -- manualmente después (cambiando status a 'trial' o 'active', siempre
+  -- del lado del servidor, ver 0005_rls_policies.sql).
+  insert into public.subscriptions (user_id, status, plan_code, starts_at, access_until)
+  values (new.id, 'suspended', null, null, null)
   on conflict (user_id) do nothing;
 
   return new;
@@ -158,11 +184,56 @@ revoke all on function public.has_content_access(uuid) from public;
 grant execute on function public.has_content_access(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
--- prevent_self_role_change(): un usuario autenticado nunca puede
--- modificar su propio role, ni siquiera si en el futuro se agregara una
--- política RLS que lo permitiera por error. auth.uid() es null cuando la
--- conexión usa la service role, así que las herramientas administrativas
--- server-side (o el SQL editor de Supabase) no quedan bloqueadas.
+-- update_own_full_name(p_full_name): única forma en que un usuario común
+-- puede tocar su propia fila de profiles.
+--
+-- En vez de una política RLS de UPDATE genérica sobre profiles (que
+-- permitiría, a nivel de fila, editar CUALQUIER columna propia — RLS no
+-- puede restringir columnas individuales dentro de la misma fila), esta
+-- migración NO define ninguna política de UPDATE para 'authenticated'
+-- sobre public.profiles (ver 0005_rls_policies.sql). El único camino de
+-- escritura es esta función: SECURITY DEFINER, actualiza únicamente
+-- full_name, únicamente en la fila del usuario que la llama.
+--
+-- Esto deja columnas sensibles (role, email, id, created_at) fuera de
+-- cualquier ruta de escritura alcanzable con la publishable key, sin
+-- depender de que un trigger recuerde bloquear cada columna una por una.
+-- ---------------------------------------------------------------------
+create or replace function public.update_own_full_name(p_full_name text)
+returns public.profiles
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile public.profiles;
+begin
+  if auth.uid() is null then
+    raise exception 'Se requiere una sesión iniciada.';
+  end if;
+
+  update public.profiles
+  set full_name = p_full_name
+  where id = auth.uid()
+  returning * into v_profile;
+
+  return v_profile;
+end;
+$$;
+
+revoke all on function public.update_own_full_name(text) from public;
+grant execute on function public.update_own_full_name(text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- prevent_self_role_change(): defensa adicional ("belt and suspenders").
+-- Con el diseño de arriba, un usuario común ya no tiene NINGÚN camino de
+-- UPDATE directo sobre profiles (ni siquiera hacia full_name — eso pasa
+-- por la función de arriba), así que este trigger es redundante en el
+-- diseño actual. Se mantiene igual: si en el futuro alguien agrega una
+-- política de UPDATE sobre profiles sin pensarlo dos veces, esto sigue
+-- bloqueando el cambio de role específicamente. auth.uid() es null
+-- cuando la conexión usa la service role, así que las herramientas
+-- administrativas server-side no quedan bloqueadas.
 -- ---------------------------------------------------------------------
 create or replace function public.prevent_self_role_change()
 returns trigger

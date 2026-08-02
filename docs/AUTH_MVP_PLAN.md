@@ -78,7 +78,7 @@ cada push a `main`. No hay ningún servidor Node.js corriendo en producción.
 en el código, no es una suposición:
 
 - `src/app/accionar/page.tsx` (Server Component) llama a
-  `getDataProvider().getActionMatrix()` — que trae **las 23 filas completas
+  `getDataProvider().getActionMatrix()` — que trae **las 33 filas completas
   de la matriz, con sus tres plantillas de mensaje cada una** — y se las pasa
   como prop a `<ActionWizard>`, que es `"use client"`. Next.js serializa esa
   matriz completa dentro del payload de React (RSC) que viaja al navegador,
@@ -96,7 +96,7 @@ en el código, no es una suposición:
 - **¿Se puede descargar/inspeccionar el contenido hoy?** Sí, sin ninguna
   dificultad técnica: "Ver código fuente", la carpeta `out/`, o el tab
   Network del navegador muestran el texto completo de las 33 lecciones, las
-  12 objeciones y las plantillas de mensaje de los 23 escenarios de la
+  12 objeciones y las plantillas de mensaje de las 33 filas de la
   matriz.
 - **¿Una pantalla de login agregada sobre la versión actual protegería el
   contenido?** **No.** Si el contenido sigue viviendo en `src/data/*.ts` y

@@ -27,15 +27,14 @@ create policy "profiles_select_own_or_admin"
   to authenticated
   using (id = auth.uid() or public.is_admin(auth.uid()));
 
--- Un usuario puede actualizar SU propia fila (por ejemplo full_name desde
--- /mi-cuenta más adelante). La columna role está protegida aparte por el
--- trigger prevent_self_role_change, porque RLS no puede restringir columnas
--- individuales dentro de una misma fila.
-create policy "profiles_update_own"
-  on public.profiles for update
-  to authenticated
-  using (id = auth.uid())
-  with check (id = auth.uid());
+-- Deliberadamente SIN política de UPDATE para 'authenticated' sobre esta
+-- tabla. RLS opera por fila, no por columna: una política de UPDATE
+-- "id = auth.uid()" dejaría editable cualquier columna de la propia fila,
+-- incluida role. En vez de eso, la única escritura permitida a un usuario
+-- común es la función public.update_own_full_name(text) (ver
+-- 0004_functions_triggers.sql), que solo puede tocar full_name. role,
+-- email, id y created_at quedan fuera de cualquier ruta de escritura
+-- alcanzable con la publishable key.
 
 -- Sin políticas de INSERT ni DELETE para 'authenticated': los perfiles se
 -- crean únicamente vía el trigger handle_new_user (SECURITY DEFINER) y no

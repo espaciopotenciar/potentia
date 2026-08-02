@@ -8,8 +8,11 @@ create extension if not exists "pgcrypto";
 
 -- ---------------------------------------------------------------------
 -- profiles: un perfil por usuario de auth.users. Se crea automáticamente
--- via trigger (ver 0004_functions_triggers.sql) cuando alguien acepta
--- una invitación / se crea en Supabase Auth.
+-- via trigger (ver 0004_functions_triggers.sql, handle_new_user) en el
+-- momento en que se inserta la fila en auth.users — es decir, cuando una
+-- administradora ENVÍA la invitación (supabase.auth.admin.inviteUserByEmail
+-- crea la fila de auth.users de inmediato), no cuando la persona invitada
+-- la acepta. Ver la nota de seguridad completa en 0004_functions_triggers.sql.
 -- ---------------------------------------------------------------------
 create table if not exists public.profiles (
   id         uuid primary key references auth.users (id) on delete cascade,
@@ -34,13 +37,19 @@ create unique index if not exists profiles_email_key
 -- El historial de cambios queda en admin_audit_log, no en filas nuevas
 -- acá — así hay una única fuente de verdad de "cuál es mi estado hoy".
 -- ---------------------------------------------------------------------
+-- plan_code y starts_at son nullable a propósito: la fila que
+-- handle_new_user crea al registrarse un usuario está SUSPENDIDA y sin
+-- ningún dato de plan todavía (nadie eligió ni activó nada). Forzar un
+-- valor no nulo ahí obligaría a inventar una fecha o un plan falso solo
+-- para satisfacer la restricción — exactamente lo que se pidió evitar.
+-- access_until ya era nullable desde el diseño original.
 create table if not exists public.subscriptions (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null unique references public.profiles (id) on delete cascade,
-  status       text not null default 'trial'
+  status       text not null default 'suspended'
                  check (status in ('trial', 'active', 'past_due', 'suspended', 'cancelled')),
   plan_code    text,
-  starts_at    timestamptz not null default now(),
+  starts_at    timestamptz,
   access_until timestamptz,
   notes        text,
   created_at   timestamptz not null default now(),
@@ -51,7 +60,14 @@ comment on table public.subscriptions is
   'Estado de membresía actual por usuario. Una fila por usuario (unique user_id). '
   'Sin escritura directa de usuarios ni de admins via API: solo service role '
   '(ver 0005_rls_policies.sql). "Vencido" es calculado por access_until, no un '
-  'valor de status adicional.';
+  'valor de status adicional. Toda fila nueva nace en status=''suspended'', '
+  'plan_code/starts_at/access_until en null: crear la cuenta y habilitar el '
+  'acceso son dos acciones distintas (ver handle_new_user en '
+  '0004_functions_triggers.sql).';
+comment on column public.subscriptions.plan_code is
+  'Nullable: una suscripción recién creada (suspended) todavía no tiene plan asignado.';
+comment on column public.subscriptions.starts_at is
+  'Nullable: se completa cuando una administradora activa la membresía, no al crear la cuenta.';
 comment on column public.subscriptions.access_until is
   'NULL = sin fecha de vencimiento definida. Ver has_active_membership() para '
   'la regla exacta de acceso por estado.';
