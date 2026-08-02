@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Status = "checking" | "ready" | "expired" | "success";
 
 export function ActualizarClaveForm() {
+  const router = useRouter();
   const [status, setStatus] = useState<Status>("checking");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -44,6 +46,16 @@ export function ActualizarClaveForm() {
     }
 
     setStatus("success");
+
+    // Ya hay una sesión activa (la estableció /auth/confirm o /auth/callback
+    // vía cookies antes de llegar acá). En vez de mandar de nuevo a /login,
+    // se intenta entrar directo a /app: el layout de (private) vuelve a
+    // validar la membresía del lado del servidor y, si corresponde,
+    // redirige solo a /membresia-inactiva. Así "la persona queda
+    // autenticada y se redirige según su membresía" sin duplicar esa
+    // regla acá.
+    router.push("/app");
+    router.refresh();
   }
 
   if (status === "checking") {
@@ -68,17 +80,7 @@ export function ActualizarClaveForm() {
   }
 
   if (status === "success") {
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-potentia-ink">Tu contraseña se actualizó correctamente.</p>
-        <Link
-          href="/login"
-          className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full bg-potentia-deep px-5 text-sm font-semibold text-white"
-        >
-          Ir a ingresar
-        </Link>
-      </div>
-    );
+    return <p className="text-sm text-potentia-ink">Contraseña actualizada. Entrando…</p>;
   }
 
   return (

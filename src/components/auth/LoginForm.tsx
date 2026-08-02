@@ -6,6 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { sanitizeInternalRedirect } from "@/lib/auth/redirects";
 
+const LINK_ERROR_MESSAGES: Record<string, string> = {
+  auth_callback_failed:
+    "No pudimos validar ese enlace. Iniciá sesión con tu contraseña o pedí uno nuevo.",
+  invite_link_invalid:
+    "Ese enlace de invitación venció o ya fue usado. Pedile a tu administradora que te envíe uno nuevo.",
+};
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -13,6 +20,9 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const linkErrorCode = searchParams.get("error");
+  const linkError = linkErrorCode ? LINK_ERROR_MESSAGES[linkErrorCode] ?? null : null;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -38,6 +48,11 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {linkError && (
+        <p role="alert" className="rounded-xl bg-potentia-sand px-3.5 py-2.5 text-sm text-potentia-ink">
+          {linkError}
+        </p>
+      )}
       <div>
         <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-potentia-ink">
           Email

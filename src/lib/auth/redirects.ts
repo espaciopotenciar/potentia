@@ -12,3 +12,21 @@ export function sanitizeInternalRedirect(path: string | null | undefined, fallba
   if (!ALLOWED_INTERNAL_REDIRECTS.includes(path)) return fallback;
   return path;
 }
+
+/**
+ * A dónde redirigir después de /auth/confirm (ver route.ts), según el
+ * "type" del enlace de Supabase que se está confirmando.
+ *
+ * Para type === "invite" se ignora "next" a propósito, incluso si viene
+ * en la URL: una invitación tiene que terminar siempre en
+ * /actualizar-clave, sin excepción, para forzar que la persona defina su
+ * contraseña antes de hacer cualquier otra cosa. No confiar en el valor
+ * de "next" acá evita que un enlace de invitación manipulado salte ese
+ * paso.
+ */
+export function resolveConfirmRedirect(type: string | null, next: string | null | undefined): string {
+  if (type === "invite") {
+    return "/actualizar-clave";
+  }
+  return sanitizeInternalRedirect(next, "/actualizar-clave");
+}
