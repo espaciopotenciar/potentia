@@ -1,9 +1,148 @@
 # Potentia — Etapa 2: entorno de prueba y autenticación básica
 
 Estado: código completo y probado en local (sin usuarios reales todavía).
-**Falta que vos completes dos acciones que no puedo hacer yo:** crear la
-cuenta/proyecto en Vercel (sección 1) y decirme qué email invitar como
-primer administrador (sección 8).
+**Falta que vos completes tres acciones que no puedo hacer yo:** crear la
+cuenta/proyecto en Vercel (sección 1), **actualizar la plantilla "Invite
+user" en Supabase** (sección 0 — imprescindible antes de volver a invitar
+a nadie) y decirme qué email invitar como primer administrador (sección 8).
+
+---
+
+## 0. Corrección: el flujo de invitación no terminaba en /actualizar-clave
+
+### Causa exacta
+
+Una invitación enviada desde **Authentication → Users → Invite user** del
+Dashboard de Supabase no involucra, en el momento de generarse, ningún
+navegador de la persona invitada — la dispara una administradora desde
+otra sesión completamente distinta. Por eso no existe ningún
+`code_verifier` de PKCE para emparejar con esa invitación (a diferencia de
+`resetPasswordForEmail()`, que se llama *desde el navegador de la propia
+persona*, con su `code_verifier` ya guardado en una cookie antes de que
+el email salga).
+
+La plantilla "Invite user" **por defecto** de Supabase usa la variable
+`{{ .ConfirmationURL }}`, que apunta al endpoint de verificación de
+Supabase (`/auth/v1/verify`) y dispara el **flujo implícito** clásico:
+Supabase valida el token del lado de su propio servidor y redirige al
+`Site URL` con la sesión completa **en el fragmento de la URL**
+(`#access_token=...&refresh_token=...`), no en un parámetro `?code=`.
+
+`/auth/callback` (el que ya existía) espera exactamente lo contrario:
+`?code=...`, para pasarlo a `exchangeCodeForSession()`. Un enlace de
+invitación con `#access_token=` nunca llega a activar esa lógica —
+literalmente no hay ningún `code` en la URL — y como nada en el servidor
+procesa el fragmento (los fragmentos `#...` ni siquiera se envían al
+servidor por diseño de HTTP), la persona quedaba en la portada pública
+con los tokens colgando, visibles, en la barra de direcciones.
+
+### Por qué no se reutilizó /auth/callback
+
+Confirmado: no es compatible. `/auth/callback` sigue existiendo tal cual,
+sin tocar, y sigue siendo el correcto **solo para recuperación de
+contraseña** (que sí genera un `code` compatible, por el motivo explicado
+arriba). Se implementó un endpoint nuevo y distinto para invitaciones.
+
+### Archivos modificados/creados
+
+| Archivo | Cambio |
+|---|---|
+| `src/app/(public)/auth/confirm/route.ts` (nuevo) | Recibe `token_hash` + `type` + `next`, llama a `supabase.auth.verifyOtp({ type, token_hash })` con el cliente de servidor. La sesión queda establecida vía **cookies** (mismo mecanismo `@supabase/ssr` que ya usa `/auth/callback`), nunca en la URL. |
+| `src/lib/auth/redirects.ts` | Nueva `resolveConfirmRedirect(type, next)`: para `type === "invite"` **ignora `next`** y fuerza siempre `/actualizar-clave`, sin excepción — ni siquiera si alguien arma un enlace de invitación con un `next` manipulado. |
+| `src/components/auth/ActualizarClaveForm.tsx` | Al guardar la contraseña ya no manda a `/login` — la persona ya está autenticada por cookies desde `/auth/confirm`. Redirige a `/app`; el layout de `(private)` revalida la membresía del lado del servidor y manda a `/membresia-inactiva` si corresponde. |
+| `src/components/auth/LoginForm.tsx` | Banner de error para `?error=invite_link_invalid` / `auth_callback_failed` (enlace vencido o ya usado). |
+| `src/lib/auth/membership.test.ts`, `src/lib/auth/redirects.test.ts` (nuevos) | Ver sección de pruebas más abajo. |
+
+`/auth/callback` **no se modificó**.
+
+### Flujo final (invitación)
+
+```
+Dashboard de Supabase envía el email de invitación
+        │
+        ▼
+Persona hace clic en el enlace del email
+        │
+        ▼
+GET /auth/confirm?token_hash=...&type=invite&next=/actualizar-clave
+        │  (el "next" de acá se IGNORA para type=invite — ver resolveConfirmRedirect)
+        ▼
+supabase.auth.verifyOtp({ type: "invite", token_hash })  ← corre en el servidor
+        │
+        ├─ éxito → sesión establecida vía cookies → redirect a /actualizar-clave
+        │                                                      │
+        │                                                      ▼
+        │                                    Define contraseña (ActualizarClaveForm)
+        │                                                      │
+        │                                                      ▼
+        │                                    router.push("/app") — con sesión ya activa
+        │                                                      │
+        │                                                      ▼
+        │                              (private)/layout.tsx revalida membresía server-side
+        │                                          │                         │
+        │                                     activa/trial               suspended/past_due/
+        │                                          │                     sin subscription
+        │                                          ▼                         ▼
+        │                                        /app               /membresia-inactiva
+        │
+        └─ error (vencido / ya usado / token inválido)
+                   → redirect a /login?error=invite_link_invalid (banner visible, sin tokens en la URL)
+```
+
+Ningún paso de este flujo pasa por `/` (la portada pública).
+
+### Template exacto para pegar en Supabase
+
+**Authentication → Email Templates → Invite user.** Reemplazar el enlace
+que usa `{{ .ConfirmationURL }}` por uno que apunte a `/auth/confirm` con
+`{{ .TokenHash }}`:
+
+```html
+<h2>Te invitaron a Potentia</h2>
+
+<p>
+  Te invitaron a crear tu cuenta en Potentia, by Espacio Potenciar.
+  Para aceptar la invitación y elegir tu contraseña, hacé clic en el
+  siguiente enlace:
+</p>
+
+<p>
+  <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/actualizar-clave">
+    Aceptar invitación
+  </a>
+</p>
+
+<p>Si no esperabas esta invitación, podés ignorar este email.</p>
+```
+
+Puntos importantes:
+
+- `{{ .SiteURL }}` toma el valor configurado en **Authentication → URL
+  Configuration → Site URL** (sección 9 más abajo) — por eso ese campo
+  tiene que apuntar a la URL real del entorno de prueba (o
+  `http://localhost:3000` mientras se prueba en local).
+- El `&type=invite&next=/actualizar-clave` va **literal**, no es una
+  variable de plantilla — son los parámetros fijos que el nuevo endpoint
+  necesita.
+- No tocar la plantilla **"Reset Password"**: esa sigue usando el flujo
+  PKCE existente sin cambios.
+
+### Pruebas realizadas
+
+| Caso pedido | Cómo se probó | Resultado |
+|---|---|---|
+| Invitación válida | **No probado todavía** — requiere invitar una cuenta real, que sigue postergado hasta que confirmes el email (sección 8) | Pendiente |
+| Invitación vencida | Se navegó a `/auth/confirm?token_hash=<valor inválido>&type=invite` contra el proyecto Supabase real | `verifyOtp` devuelve error → redirige a `/login?error=invite_link_invalid`, banner visible |
+| Invitación ya utilizada | Mismo mecanismo: Supabase invalida el `token_hash` después del primer uso exitoso, así que un segundo click cae en la misma rama de error que "vencida" (mismo comportamiento verificado arriba) | Cubierto por el mismo caso de arriba — Supabase no distingue "vencido" de "ya usado" en la respuesta, así que la app tampoco (mensaje único, a propósito) |
+| Usuario `suspended` | Probado a nivel de lógica: `hasActiveMembership({status:"suspended", ...})` → `false` en las 12 pruebas de `membership.test.ts` (todas las combinaciones con `access_until`) | 12/12 pasan |
+| Usuario `active` | Ídem — `hasActiveMembership({status:"active", ...})` → `true` si `access_until` es `null` o futuro | Cubierto en `membership.test.ts` |
+| URL sin tokens visibles después de confirmar | Verificado en el navegador tras el intento con token inválido: `window.location.href` quedó en `http://localhost:3000/login?error=invite_link_invalid` — sin `token_hash`, `access_token` ni `refresh_token` en ningún lado. El camino de éxito construye la URL de redirección solo con `next` (`/actualizar-clave`), nunca agrega tokens — confirmado por lectura de código, ya que ese camino específico no se pudo ejercitar sin una invitación real | Verificado (camino de error en vivo + camino de éxito por revisión de código) |
+
+Además: **31/31 tests** automatizados pasan (`npm test`) — incluye los 22
+nuevos (`membership.test.ts`, `redirects.test.ts`) más los 9 ya
+existentes. Build limpio (`npm run build`). Se confirmó que `/app` sin
+sesión sigue yendo a `/login` y que `/recuperar-clave` sigue funcionando
+sin cambios (no se rompió nada de lo ya probado).
 
 ---
 
@@ -174,6 +313,10 @@ consulta — solo de `profiles`/`subscriptions`, que el propio usuario
 puede leer por su política de `SELECT`.
 
 ## 8. Creación del primer administrador — esperando tu confirmación
+
+**Antes de invitar a nadie (de nuevo):** actualizá la plantilla "Invite
+user" con el HTML exacto de la sección 0 — si se invita con la plantilla
+vieja, va a fallar exactamente igual que la vez anterior.
 
 Todavía **no invité a nadie**. Cuando me digas qué email usar:
 
