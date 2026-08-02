@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/session";
-import { hasActiveMembership } from "@/lib/auth/membership";
+import { resolveAppAccess } from "@/lib/auth/membership";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { MobileNavigation } from "@/components/layout/MobileNavigation";
 
@@ -28,18 +28,18 @@ import { MobileNavigation } from "@/components/layout/MobileNavigation";
  */
 export default async function PrivateLayout({ children }: { children: React.ReactNode }) {
   const { userId, profile } = await getAuthContext();
+  const access = resolveAppAccess(userId, profile);
 
-  if (!userId) {
+  if (access === "login") {
     redirect("/login");
   }
-
-  if (!profile || !hasActiveMembership(profile.subscription)) {
+  if (access === "membership-inactive") {
     redirect("/membresia-inactiva");
   }
 
   return (
     <>
-      <AppHeader role={profile.role} />
+      <AppHeader role={profile!.role} />
       <div className="pb-24 md:pb-12">{children}</div>
       <MobileNavigation />
     </>

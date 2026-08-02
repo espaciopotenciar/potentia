@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/session";
+import { resolveAdminAccess } from "@/lib/auth/membership";
 import { PotentiaLogo } from "@/components/layout/PotentiaLogo";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 
@@ -18,12 +19,12 @@ import { SignOutButton } from "@/components/auth/SignOutButton";
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { userId, profile } = await getAuthContext();
+  const access = resolveAdminAccess(userId, profile);
 
-  if (!userId) {
+  if (access === "login") {
     redirect("/login");
   }
-
-  if (!profile || profile.role !== "admin") {
+  if (access === "forbidden") {
     redirect("/app");
   }
 

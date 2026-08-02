@@ -33,3 +33,45 @@ export function hasActiveMembership(subscription: SubscriptionSnapshot | null): 
       return false;
   }
 }
+
+/**
+ * Snapshot mínimo del perfil que necesitan las reglas de acceso de acá
+ * abajo — no todo CurrentProfile, para no acoplar esto a session.ts.
+ */
+export interface ProfileAccessSnapshot {
+  role: "user" | "admin";
+  subscription: SubscriptionSnapshot | null;
+}
+
+export type AppAccessDecision = "login" | "membership-inactive" | "ok";
+
+/**
+ * Regla de acceso de src/app/(private)/layout.tsx, como función pura
+ * para poder probar cada caso (sin sesión, sin fila de profile, cada
+ * status de membresía) sin tener que montar el layout ni pegarle a
+ * Supabase.
+ */
+export function resolveAppAccess(
+  userId: string | null,
+  profile: ProfileAccessSnapshot | null
+): AppAccessDecision {
+  if (!userId) return "login";
+  if (!profile || !hasActiveMembership(profile.subscription)) return "membership-inactive";
+  return "ok";
+}
+
+export type AdminAccessDecision = "login" | "forbidden" | "ok";
+
+/**
+ * Regla de acceso de src/app/admin/layout.tsx: sesión + role === 'admin',
+ * independiente de la membresía propia del admin (ver comentario en ese
+ * archivo).
+ */
+export function resolveAdminAccess(
+  userId: string | null,
+  profile: ProfileAccessSnapshot | null
+): AdminAccessDecision {
+  if (!userId) return "login";
+  if (!profile || profile.role !== "admin") return "forbidden";
+  return "ok";
+}
