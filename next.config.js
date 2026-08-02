@@ -1,29 +1,16 @@
 /** @type {import('next').NextConfig} */
 
-// Nombre exacto del repositorio de GitHub, usado como subcarpeta de publicación
-// en GitHub Pages: https://espaciopotenciar.github.io/potentia/
-const repoName = "potentia";
-
-// El workflow de GitHub Actions (.github/workflows/deploy-pages.yml) define
-// GITHUB_PAGES=true al construir para publicar. En local (npm run dev / npm
-// run build sin esa variable) la app se sirve en la raíz, sin basePath, para
-// no depender de configuración adicional en tu máquina.
-const isGithubPagesBuild = process.env.GITHUB_PAGES === "true";
-const basePath = isGithubPagesBuild ? `/${repoName}` : "";
-
+// Esta rama (auth-mvp) deja de depender de "output: export": necesita un
+// servidor Next.js real para Route Handlers (/auth/callback), Server
+// Components con validación de sesión, y el middleware de refresco de
+// cookies de Supabase. Se despliega en un hosting compatible con Next.js
+// (Vercel para el entorno de prueba), no en GitHub Pages.
+//
+// La configuración de exportación estática (output: "export", basePath,
+// assetPrefix para /potentia/) sigue existiendo tal cual en `main` — este
+// archivo es específico de esta rama y no la afecta.
 const nextConfig = {
   reactStrictMode: true,
-  // Exportación estática: genera la carpeta "out" con HTML/CSS/JS puro,
-  // sin depender de un servidor Node.js en producción (requisito de GitHub Pages).
-  output: "export",
-  // GitHub Pages sirve archivos estáticos: cada ruta necesita resolver a una
-  // carpeta con index.html (por ejemplo /aprender/ -> aprender/index.html).
-  trailingSlash: true,
-  // GitHub Pages no tiene el optimizador de imágenes de Next.js corriendo en
-  // un servidor; se deja unoptimized para exportación 100% estática.
-  images: { unoptimized: true },
-  basePath: basePath || undefined,
-  assetPrefix: basePath ? `${basePath}/` : undefined,
 };
 
 module.exports = nextConfig;
