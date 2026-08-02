@@ -1,12 +1,13 @@
-"use client";
-
 import { ProgressBar } from "@/components/shared/ProgressBar";
-import { LocalStorageNotice } from "@/components/shared/LocalStorageNotice";
-import { useProgress } from "@/hooks/useProgress";
-import type { Lesson } from "@/types/lesson";
 
-export function LearningProgress({ lessons }: { lessons: Lesson[] }) {
-  const { totalProgress, completedIds, hydrated } = useProgress(lessons);
+export function LearningProgress({
+  completedCount,
+  totalCount,
+}: {
+  completedCount: number;
+  totalCount: number;
+}) {
+  const percent = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
 
   return (
     <div className="rounded-2xl border border-potentia-sand bg-white p-6 shadow-card">
@@ -14,16 +15,17 @@ export function LearningProgress({ lessons }: { lessons: Lesson[] }) {
         <div>
           <h2 className="text-base font-semibold text-potentia-ink">Tu avance general</h2>
           <p className="mt-1 text-sm text-potentia-muted">
-            {hydrated ? completedIds.length : 0} de {lessons.length} lecciones completadas
+            {completedCount} de {totalCount} lecciones completadas
           </p>
         </div>
         <div className="w-full md:w-64">
-          <ProgressBar value={hydrated ? totalProgress : 0} />
+          <ProgressBar value={percent} />
         </div>
       </div>
-      <div className="mt-4">
-        <LocalStorageNotice />
-      </div>
+      <p className="mt-4 text-xs text-potentia-muted">
+        Tu progreso queda guardado en tu cuenta — lo vas a ver igual si entrás desde
+        otro dispositivo.
+      </p>
     </div>
   );
 }

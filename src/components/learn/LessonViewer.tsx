@@ -4,31 +4,35 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { CompletionButton } from "@/components/learn/CompletionButton";
-import { RelatedContent } from "@/components/shared/RelatedContent";
-import { useProgress } from "@/hooks/useProgress";
+import { RelatedContent, type RelatedLessonSummary } from "@/components/shared/RelatedContent";
+import { useLastVisitedLesson } from "@/hooks/useLastVisitedLesson";
 import type { Lesson } from "@/types/lesson";
 
 export function LessonViewer({
   lesson,
+  userId,
+  completed,
   allLessons,
   previousLesson,
   nextLesson,
 }: {
   lesson: Lesson;
-  allLessons: Lesson[];
+  userId: string;
+  completed: boolean;
+  allLessons: RelatedLessonSummary[];
   previousLesson: Lesson | null;
   nextLesson: Lesson | null;
 }) {
-  const { markVisited } = useProgress(allLessons);
+  const { setLastLessonSlug } = useLastVisitedLesson();
 
   useEffect(() => {
-    markVisited(lesson.slug);
+    setLastLessonSlug(lesson.slug);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lesson.slug]);
 
   return (
     <article className="container-app max-w-3xl py-10">
-      <Link href="/aprender" className="inline-flex items-center gap-1.5 text-sm font-medium text-potentia-muted hover:text-potentia-deep">
+      <Link href="/app/aprender" className="inline-flex items-center gap-1.5 text-sm font-medium text-potentia-muted hover:text-potentia-deep">
         <Icon name="chevron-left" className="h-4 w-4" />
         Volver a Aprender
       </Link>
@@ -49,17 +53,17 @@ export function LessonViewer({
       </div>
 
       <div className="mt-8">
-        <CompletionButton lesson={lesson} allLessons={allLessons} />
+        <CompletionButton userId={userId} lessonId={lesson.id} initialCompleted={completed} />
       </div>
 
       <div className="mt-10">
-        <RelatedContent lessonIds={lesson.relatedLessonIds} />
+        <RelatedContent lessonIds={lesson.relatedLessonIds} allLessons={allLessons} />
       </div>
 
       <nav className="mt-10 grid gap-3 border-t border-potentia-sand pt-6 sm:grid-cols-2" aria-label="Navegación entre lecciones">
         {previousLesson ? (
           <Link
-            href={`/aprender/${previousLesson.slug}`}
+            href={`/app/aprender/${previousLesson.slug}`}
             className="flex items-center gap-2 rounded-xl border border-potentia-sand px-4 py-3 text-sm hover:bg-potentia-sand/50"
           >
             <Icon name="chevron-left" className="h-4 w-4 shrink-0 text-potentia-muted" />
@@ -73,7 +77,7 @@ export function LessonViewer({
         )}
         {nextLesson && (
           <Link
-            href={`/aprender/${nextLesson.slug}`}
+            href={`/app/aprender/${nextLesson.slug}`}
             className="flex items-center justify-end gap-2 rounded-xl border border-potentia-sand px-4 py-3 text-right text-sm hover:bg-potentia-sand/50 sm:col-start-2"
           >
             <span>

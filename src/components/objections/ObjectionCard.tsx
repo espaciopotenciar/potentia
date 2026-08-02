@@ -5,7 +5,7 @@ import type { Objection } from "@/types/objection";
 export function ObjectionCard({ objection }: { objection: Objection }) {
   return (
     <Link
-      href={`/objeciones/${objection.slug}`}
+      href={`/app/objeciones/${objection.slug}`}
       className="group flex flex-col justify-between rounded-2xl border border-potentia-sand bg-white p-5 shadow-card transition-colors hover:border-potentia-deep/30"
     >
       <div>

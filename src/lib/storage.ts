@@ -1,5 +1,7 @@
 export const STORAGE_KEYS = {
-  completedLessons: "potentia:completed-lessons",
+  // Progreso real (lecciones completadas) vive en Supabase
+  // (learning_progress) desde la Etapa 3. Solo queda acá el hint visual
+  // de "última lección visitada" — ver src/hooks/useLastVisitedLesson.ts.
   lastLessonSlug: "potentia:last-lesson",
 } as const;
 

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getDataProvider } from "@/lib/dataProvider";
+import { getObjections } from "@/lib/content/repository";
 import { ObjectionCard } from "@/components/objections/ObjectionCard";
 
 export const metadata: Metadata = {
@@ -7,8 +7,8 @@ export const metadata: Metadata = {
   description: "Elegí lo que te dijo el potencial cliente y descubrí cómo profundizar, responder y proponer un próximo paso.",
 };
 
-export default function ObjectionsPage() {
-  const objections = getDataProvider().getObjections();
+export default async function ObjectionsPage() {
+  const objections = await getObjections();
 
   return (
     <div className="container-app py-10">

@@ -4,14 +4,22 @@ import { useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 import { AdviceCard } from "@/components/shared/AdviceCard";
 import { WarningCard } from "@/components/shared/WarningCard";
-import { RelatedContent } from "@/components/shared/RelatedContent";
+import { RelatedContent, type RelatedLessonSummary } from "@/components/shared/RelatedContent";
 import { MessageStyleSelector, type MessageStyleKey } from "@/components/action/MessageStyleSelector";
 import { TemplateVariablesForm } from "@/components/action/TemplateVariablesForm";
 import { MessagePreview } from "@/components/action/MessagePreview";
 import { fillTemplate } from "@/lib/template";
 import type { ActionResultData } from "@/types/action";
 
-export function ActionResult({ result, onRestart }: { result: ActionResultData; onRestart: () => void }) {
+export function ActionResult({
+  result,
+  allLessons,
+  onRestart,
+}: {
+  result: ActionResultData;
+  allLessons: RelatedLessonSummary[];
+  onRestart: () => void;
+}) {
   const { entry, matchedExactly } = result;
   const [selectedStyle, setSelectedStyle] = useState<MessageStyleKey | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -90,7 +98,7 @@ export function ActionResult({ result, onRestart }: { result: ActionResultData; 
       </div>
 
       <div className="mt-10">
-        <RelatedContent lessonIds={entry.relatedLessonIds} />
+        <RelatedContent lessonIds={entry.relatedLessonIds} allLessons={allLessons} />
       </div>
 
       <div className="mt-10 flex justify-center">

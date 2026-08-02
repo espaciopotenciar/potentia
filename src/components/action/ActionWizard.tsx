@@ -6,6 +6,7 @@ import { ProgressBar } from "@/components/shared/ProgressBar";
 import { QuestionStep } from "@/components/action/QuestionStep";
 import { OptionCard } from "@/components/action/OptionCard";
 import { ActionResult } from "@/components/action/ActionResult";
+import type { RelatedLessonSummary } from "@/components/shared/RelatedContent";
 import {
   channelOptions,
   opportunityStageOptions,
@@ -37,7 +38,13 @@ function getSteps(answers: ActionAnswers): StepId[] {
   return steps;
 }
 
-export function ActionWizard({ matrix }: { matrix: ActionMatrixEntry[] }) {
+export function ActionWizard({
+  matrix,
+  lessons,
+}: {
+  matrix: ActionMatrixEntry[];
+  lessons: RelatedLessonSummary[];
+}) {
   const [answers, setAnswers] = useState<ActionAnswers>(EMPTY_ANSWERS);
   const [stepIndex, setStepIndex] = useState(0);
 
@@ -97,7 +104,7 @@ export function ActionWizard({ matrix }: { matrix: ActionMatrixEntry[] }) {
         </div>
       );
     }
-    return <ActionResult result={result} onRestart={restart} />;
+    return <ActionResult result={result} allLessons={lessons} onRestart={restart} />;
   }
 
   const progressValue = Math.round((stepIndex / steps.length) * 100);

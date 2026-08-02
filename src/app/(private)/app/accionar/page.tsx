@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getDataProvider } from "@/lib/dataProvider";
+import { getActionMatrix, getLessons } from "@/lib/content/repository";
 import { ActionWizard } from "@/components/action/ActionWizard";
 
 export const metadata: Metadata = {
@@ -7,8 +7,9 @@ export const metadata: Metadata = {
   description: "Respondé algunas preguntas breves y Potentia te ayuda a identificar tu próxima acción comercial.",
 };
 
-export default function AccionarPage() {
-  const matrix = getDataProvider().getActionMatrix();
+export default async function AccionarPage() {
+  const [matrix, lessons] = await Promise.all([getActionMatrix(), getLessons()]);
+  const lessonSummaries = lessons.map((lesson) => ({ id: lesson.id, slug: lesson.slug, title: lesson.title }));
 
   return (
     <div>
@@ -21,7 +22,7 @@ export default function AccionarPage() {
           Respondé algunas preguntas breves y Potentia te ayudará a identificar tu próxima acción.
         </p>
       </div>
-      <ActionWizard matrix={matrix} />
+      <ActionWizard matrix={matrix} lessons={lessonSummaries} />
     </div>
   );
 }

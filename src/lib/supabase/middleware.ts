@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PRIVATE_PATH_PREFIXES = ["/app", "/mi-cuenta"];
+const PRIVATE_PATH_PREFIXES = ["/app", "/mi-cuenta", "/admin"];
 
 function isPrivatePath(pathname: string): boolean {
   return PRIVATE_PATH_PREFIXES.some(

@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
-import { AppHeader } from "@/components/layout/AppHeader";
-import { MobileNavigation } from "@/components/layout/MobileNavigation";
 import "./globals.css";
 
+/**
+ * Layout raíz — deliberadamente mínimo. Ya no incluye AppHeader ni
+ * MobileNavigation (la navegación real de la app, con Aprender/Accionar/
+ * Objeciones/Buscar): esas rutas ahora viven exclusivamente bajo
+ * src/app/(private)/app, detrás de sesión + membresía, y su navegación
+ * vive en src/app/(private)/layout.tsx. Este layout raíz solo envuelve
+ * páginas públicas (/, /login, /recuperar-clave, /actualizar-clave,
+ * /membresia-inactiva), que ya traen su propio encabezado simple.
+ */
 export const metadata: Metadata = {
   title: "Potentia — by Espacio Potenciar",
   description:
@@ -19,11 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Saltar al contenido principal
         </a>
-        <AppHeader />
-        <main id="main-content" className="pb-24 md:pb-12">
-          {children}
-        </main>
-        <MobileNavigation />
+        <main id="main-content">{children}</main>
       </body>
     </html>
   );

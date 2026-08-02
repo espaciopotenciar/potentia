@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/icons";
-import { useProgress } from "@/hooks/useProgress";
+import { useLastVisitedLesson } from "@/hooks/useLastVisitedLesson";
 import type { Lesson } from "@/types/lesson";
 
 export function ContinueLearningBanner({ lessons }: { lessons: Lesson[] }) {
-  const { lastLessonSlug, hydrated } = useProgress(lessons);
+  const { lastLessonSlug, hydrated } = useLastVisitedLesson();
 
   if (!hydrated || !lastLessonSlug) return null;
 
@@ -15,7 +15,7 @@ export function ContinueLearningBanner({ lessons }: { lessons: Lesson[] }) {
 
   return (
     <Link
-      href={`/aprender/${lesson.slug}`}
+      href={`/app/aprender/${lesson.slug}`}
       className="mb-8 flex items-center justify-between gap-4 rounded-2xl bg-potentia-deep p-5 text-white shadow-soft transition-transform hover:-translate-y-0.5"
     >
       <span>

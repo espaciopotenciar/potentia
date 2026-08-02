@@ -6,6 +6,7 @@ describe("sanitizeInternalRedirect", () => {
     expect(sanitizeInternalRedirect("/app")).toBe("/app");
     expect(sanitizeInternalRedirect("/mi-cuenta")).toBe("/mi-cuenta");
     expect(sanitizeInternalRedirect("/actualizar-clave")).toBe("/actualizar-clave");
+    expect(sanitizeInternalRedirect("/admin")).toBe("/admin");
   });
 
   it("cae al fallback si no hay valor", () => {
@@ -15,8 +16,8 @@ describe("sanitizeInternalRedirect", () => {
   });
 
   it("bloquea rutas internas no permitidas", () => {
-    expect(sanitizeInternalRedirect("/admin")).toBe("/app");
     expect(sanitizeInternalRedirect("/aprender")).toBe("/app");
+    expect(sanitizeInternalRedirect("/app/aprender")).toBe("/app");
   });
 
   it("bloquea URLs externas (open redirect)", () => {

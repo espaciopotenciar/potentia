@@ -5,7 +5,7 @@
  * una ruta inventada) cae al default seguro. Esto es lo que evita un
  * "open redirect" a través del parámetro redirectTo/next.
  */
-const ALLOWED_INTERNAL_REDIRECTS = ["/app", "/mi-cuenta", "/actualizar-clave"];
+const ALLOWED_INTERNAL_REDIRECTS = ["/app", "/mi-cuenta", "/actualizar-clave", "/admin"];
 
 export function sanitizeInternalRedirect(path: string | null | undefined, fallback = "/app"): string {
   if (!path) return fallback;

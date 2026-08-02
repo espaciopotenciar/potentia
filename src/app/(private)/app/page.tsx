@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/session";
-import { SignOutButton } from "@/components/auth/SignOutButton";
+import { Icon, type IconName } from "@/components/icons";
 
 export const metadata: Metadata = {
-  title: "Mi cuenta — Potentia",
+  title: "Inicio — Potentia",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -15,6 +15,33 @@ const STATUS_LABELS: Record<string, string> = {
   suspended: "Suspendida",
   cancelled: "Cancelada",
 };
+
+const SECTIONS: { href: string; title: string; description: string; icon: IconName }[] = [
+  {
+    href: "/app/aprender",
+    title: "Aprender",
+    description: "Los 5 módulos y toda la teoría del Sistema 4x4.",
+    icon: "book",
+  },
+  {
+    href: "/app/accionar",
+    title: "Accionar",
+    description: "Respondé unas preguntas y encontrá tu próxima acción.",
+    icon: "zap",
+  },
+  {
+    href: "/app/objeciones",
+    title: "Objeciones",
+    description: "Qué responder cuando el potencial cliente pone un freno.",
+    icon: "message-circle-question",
+  },
+  {
+    href: "/app/buscar",
+    title: "Buscar",
+    description: "Encontrá rápido cualquier contenido de Potentia.",
+    icon: "search",
+  },
+];
 
 export default async function PrivateAppHomePage() {
   // El layout (private) ya validó sesión + membresía; se vuelve a pedir
@@ -31,20 +58,34 @@ export default async function PrivateAppHomePage() {
   const subscription = profile.subscription;
 
   return (
-    <div className="container-app max-w-2xl py-10">
-      <p className="text-xs font-semibold uppercase tracking-wide text-potentia-deep">
-        Página temporal — Etapa 2
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold text-potentia-ink">
+    <div className="container-app max-w-3xl py-10">
+      <p className="text-xs font-semibold uppercase tracking-wide text-potentia-deep">Potentia</p>
+      <h1 className="mt-2 text-2xl font-semibold text-potentia-ink md:text-3xl">
         Hola, {profile.full_name || profile.email}
       </h1>
       <p className="mt-2 text-sm text-potentia-muted">
-        Esta pantalla es provisoria: confirma que la sesión y la validación de
-        membresía funcionan de punta a punta. El contenido real de Aprender,
-        Accionar, Objeciones y Buscar todavía no se migró acá.
+        Elegí por dónde seguir.
       </p>
 
-      <dl className="mt-8 grid gap-4 rounded-2xl border border-potentia-sand bg-white p-6 sm:grid-cols-2">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        {SECTIONS.map((section) => (
+          <Link
+            key={section.href}
+            href={section.href}
+            className="group flex items-start gap-4 rounded-2xl border border-potentia-sand bg-white p-5 shadow-card transition-colors hover:border-potentia-deep/30"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-potentia-deep/10 text-potentia-deep">
+              <Icon name={section.icon} className="h-5 w-5" />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-potentia-ink">{section.title}</span>
+              <span className="mt-1 block text-sm text-potentia-muted">{section.description}</span>
+            </span>
+          </Link>
+        ))}
+      </div>
+
+      <dl className="mt-10 grid gap-4 rounded-2xl border border-potentia-sand bg-white p-6 sm:grid-cols-2">
         <div>
           <dt className="text-xs font-medium text-potentia-muted">Nombre</dt>
           <dd className="mt-1 text-sm text-potentia-ink">{profile.full_name || "(sin definir)"}</dd>
@@ -73,14 +114,13 @@ export default async function PrivateAppHomePage() {
         </div>
       </dl>
 
-      <div className="mt-8 flex flex-wrap gap-3">
+      <div className="mt-6">
         <Link
           href="/mi-cuenta"
           className="inline-flex min-h-[2.75rem] items-center rounded-full border border-potentia-sand px-5 text-sm font-medium text-potentia-ink hover:bg-potentia-sand/60"
         >
           Editar mi nombre
         </Link>
-        <SignOutButton />
       </div>
     </div>
   );

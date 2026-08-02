@@ -4,14 +4,20 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { WarningCard } from "@/components/shared/WarningCard";
-import { RelatedContent } from "@/components/shared/RelatedContent";
+import { RelatedContent, type RelatedLessonSummary } from "@/components/shared/RelatedContent";
 import { MessageStyleSelector, type MessageStyleKey } from "@/components/action/MessageStyleSelector";
 import { TemplateVariablesForm } from "@/components/action/TemplateVariablesForm";
 import { MessagePreview } from "@/components/action/MessagePreview";
 import { extractVariables, fillTemplate } from "@/lib/template";
 import type { Objection } from "@/types/objection";
 
-export function ObjectionResult({ objection }: { objection: Objection }) {
+export function ObjectionResult({
+  objection,
+  allLessons,
+}: {
+  objection: Objection;
+  allLessons: RelatedLessonSummary[];
+}) {
   const [selectedStyle, setSelectedStyle] = useState<MessageStyleKey | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
 
@@ -34,7 +40,7 @@ export function ObjectionResult({ objection }: { objection: Objection }) {
 
   return (
     <div className="container-app max-w-3xl py-10">
-      <Link href="/objeciones" className="inline-flex items-center gap-1.5 text-sm font-medium text-potentia-muted hover:text-potentia-deep">
+      <Link href="/app/objeciones" className="inline-flex items-center gap-1.5 text-sm font-medium text-potentia-muted hover:text-potentia-deep">
         <Icon name="chevron-left" className="h-4 w-4" />
         Volver a Objeciones
       </Link>
@@ -120,7 +126,7 @@ export function ObjectionResult({ objection }: { objection: Objection }) {
       </div>
 
       <div className="mt-10">
-        <RelatedContent lessonIds={objection.relatedLessonIds} />
+        <RelatedContent lessonIds={objection.relatedLessonIds} allLessons={allLessons} />
       </div>
     </div>
   );

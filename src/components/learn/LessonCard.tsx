@@ -1,17 +1,20 @@
-"use client";
-
 import Link from "next/link";
 import { Icon } from "@/components/icons";
 import type { Lesson } from "@/types/lesson";
-import { useProgress } from "@/hooks/useProgress";
 
-export function LessonCard({ lesson, allLessons, index }: { lesson: Lesson; allLessons: Lesson[]; index: number }) {
-  const { isCompleted, hydrated } = useProgress(allLessons);
-  const completed = hydrated && isCompleted(lesson.id);
-
+export function LessonCard({
+  lesson,
+  completed,
+  index,
+}: {
+  lesson: Lesson;
+  /** Ya calculado server-side contra learning_progress. */
+  completed: boolean;
+  index: number;
+}) {
   return (
     <Link
-      href={`/aprender/${lesson.slug}`}
+      href={`/app/aprender/${lesson.slug}`}
       className="group flex items-start gap-4 rounded-2xl border border-potentia-sand bg-white p-4 transition-colors hover:border-potentia-deep/30 hover:bg-potentia-sand/40"
     >
       <span

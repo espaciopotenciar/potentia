@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { navItems } from "@/components/layout/navItems";
+import { navItems, type NavItem } from "@/components/layout/navItems";
 import { Icon } from "@/components/icons";
 
-function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  return pathname.startsWith(href);
+function isActive(pathname: string, item: NavItem) {
+  if (item.exact) return pathname === item.href;
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
 export function MobileNavigation() {
@@ -21,7 +21,7 @@ export function MobileNavigation() {
     >
       <ul className="grid grid-cols-5">
         {navItems.map((item) => {
-          const active = isActive(pathname, item.href);
+          const active = isActive(pathname, item);
           return (
             <li key={item.href}>
               <Link

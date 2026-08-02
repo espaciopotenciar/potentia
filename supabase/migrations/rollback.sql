@@ -1,6 +1,6 @@
 -- =====================================================================
 -- rollback.sql
--- Revierte por completo 0001-0005. Pensado para correrse manualmente
+-- Revierte por completo 0001-0006. Pensado para correrse manualmente
 -- (Supabase SQL editor o `supabase db execute`) si hace falta deshacer
 -- toda la migración durante la etapa de prueba en auth-mvp.
 --
@@ -23,6 +23,7 @@ drop trigger if exists subscriptions_set_updated_at on public.subscriptions;
 drop trigger if exists profiles_set_updated_at on public.profiles;
 
 -- Funciones
+drop function if exists public.admin_set_subscription_status(uuid, text, timestamptz, text, text);
 drop function if exists public.prevent_audit_log_mutation();
 drop function if exists public.prevent_self_subscription_change();
 drop function if exists public.prevent_self_role_change();

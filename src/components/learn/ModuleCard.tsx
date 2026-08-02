@@ -1,22 +1,18 @@
-"use client";
-
 import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { ProgressBar } from "@/components/shared/ProgressBar";
 import type { LearningModule, Lesson } from "@/types/lesson";
-import { useProgress } from "@/hooks/useProgress";
 
 export function ModuleCard({
   module: learningModule,
   lessons,
-  allLessons,
+  progress,
 }: {
   module: LearningModule;
   lessons: Lesson[];
-  allLessons: Lesson[];
+  /** 0-100, ya calculado server-side a partir de learning_progress. */
+  progress: number;
 }) {
-  const { moduleProgress, hydrated } = useProgress(allLessons);
-  const progress = hydrated ? moduleProgress(learningModule.id) : 0;
   const firstLesson = lessons[0];
 
   return (
@@ -34,7 +30,7 @@ export function ModuleCard({
       </div>
       {firstLesson && (
         <Link
-          href={`/aprender/${firstLesson.slug}`}
+          href={`/app/aprender/${firstLesson.slug}`}
           className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-potentia-deep hover:underline"
         >
           Empezar módulo
