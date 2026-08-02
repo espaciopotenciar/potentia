@@ -4,10 +4,16 @@
 --
 -- Principio de permisos aplicado a TODA función de este archivo, sin
 -- excepción: Postgres otorga EXECUTE a PUBLIC por defecto en toda función
--- nueva. Cada función de acá revoca ese permiso por defecto explícitamente
--- y vuelve a otorgar solo lo mínimo necesario:
+-- nueva, y Supabase además otorga EXECUTE directo a anon/authenticated/
+-- service_role sobre toda función nueva del schema public (default
+-- privileges propias del proyecto). "revoke ... from public" revoca
+-- SOLO el primero — no alcanza para quitarle el permiso directo a anon
+-- ni a authenticated. Por eso cada función de acá revoca explícitamente
+-- los tres roles (public, anon, authenticated) y vuelve a otorgar solo
+-- lo mínimo necesario:
 --   - Funciones de trigger (nunca deben llamarse como RPC): sin GRANT a
---     nadie. Los triggers se disparan igual, no dependen de EXECUTE.
+--     nadie (ni anon ni authenticated). Los triggers se disparan igual,
+--     no dependen de EXECUTE.
 --   - Helpers de sesión (is_current_user_admin, etc.): GRANT solo a
 --     'authenticated'. 'anon' nunca las puede ejecutar.
 --   - update_own_full_name: GRANT solo a 'authenticated'.
@@ -33,7 +39,15 @@ begin
 end;
 $$;
 
+-- IMPORTANTE: Supabase otorga EXECUTE a anon/authenticated/service_role
+-- de forma automática (default privileges) sobre toda función nueva del
+-- schema public, ADEMÁS del GRANT implícito a PUBLIC de Postgres.
+-- "revoke ... from public" revoca únicamente ese segundo grant — no
+-- alcanza para quitarle el permiso directo a anon/authenticated. Por eso
+-- cada función de trigger de este archivo revoca explícitamente los tres.
 revoke all on function public.set_updated_at() from public;
+revoke all on function public.set_updated_at() from anon;
+revoke all on function public.set_updated_at() from authenticated;
 
 drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at
@@ -119,6 +133,8 @@ end;
 $$;
 
 revoke all on function public.handle_new_user() from public;
+revoke all on function public.handle_new_user() from anon;
+revoke all on function public.handle_new_user() from authenticated;
 -- Sin GRANT a authenticated ni a anon: solo el trigger la invoca.
 
 drop trigger if exists on_auth_user_created on auth.users;
@@ -291,6 +307,8 @@ end;
 $$;
 
 revoke all on function public.prevent_self_role_change() from public;
+revoke all on function public.prevent_self_role_change() from anon;
+revoke all on function public.prevent_self_role_change() from authenticated;
 
 drop trigger if exists profiles_prevent_self_role_change on public.profiles;
 create trigger profiles_prevent_self_role_change
@@ -317,6 +335,8 @@ end;
 $$;
 
 revoke all on function public.prevent_self_subscription_change() from public;
+revoke all on function public.prevent_self_subscription_change() from anon;
+revoke all on function public.prevent_self_subscription_change() from authenticated;
 
 drop trigger if exists subscriptions_prevent_self_change on public.subscriptions;
 create trigger subscriptions_prevent_self_change
